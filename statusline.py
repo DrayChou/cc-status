@@ -194,8 +194,90 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
     return platforms_data
 
 
+def init_config():
+    """初始化配置文件"""
+    try:
+        config_manager = ConfigManager()
+        # 触发配置文件创建（通过读取配置）
+        config_manager.get_platforms_config()
+        config_manager.get_status_config()
+        config_manager.get_launcher_config()
+        print("[OK] Configuration files initialized successfully")
+        print(f"Configuration location: {config_manager.config_dir}")
+        return True
+    except Exception as e:
+        print(f"[FAIL] Failed to initialize configuration: {e}")
+        return False
+
+
+def check_config():
+    """检查配置文件"""
+    try:
+        config_manager = ConfigManager()
+
+        # 检查配置文件是否存在
+        if not config_manager.platforms_file.exists():
+            print("[FAIL] Platform configuration file not found")
+            print(f"  Expected at: {config_manager.platforms_file}")
+            return False
+
+        # 检查配置格式
+        try:
+            platforms_config = config_manager.get_platforms_config()
+            print("[OK] Platform configuration format is valid")
+        except Exception as e:
+            print(f"[FAIL] Invalid platform configuration: {e}")
+            return False
+
+        # 检查启用的平台
+        enabled_platforms = []
+        for platform_id, platform_config in platforms_config.get("platforms", {}).items():
+            if platform_config.get("enabled", False):
+                has_auth = any([
+                    platform_config.get("api_key"),
+                    platform_config.get("auth_token"),
+                    platform_config.get("login_token")
+                ])
+                if has_auth:
+                    enabled_platforms.append(platform_id)
+
+        if enabled_platforms:
+            print(f"[OK] Found {len(enabled_platforms)} configured platform(s):")
+            for platform in enabled_platforms:
+                print(f"  - {platform}")
+        else:
+            print("[FAIL] No configured platforms found")
+            print("  Please configure API keys in ~/.claude/config/platforms.json")
+
+        return len(enabled_platforms) > 0
+
+    except Exception as e:
+        print(f"[FAIL] Configuration check failed: {e}")
+        return False
+
+
 def main():
     """主函数"""
+    # 处理命令行参数
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--init-config":
+            return init_config()
+        elif sys.argv[1] == "--check-config":
+            return check_config()
+        elif sys.argv[1] in ["--help", "-h"]:
+            print("cc-status - Claude Code Multi-Platform Status Bar Manager")
+            print()
+            print("Usage:")
+            print("  python statusline.py              # Run status bar")
+            print("  python statusline.py --init-config    # Initialize configuration")
+            print("  python statusline.py --check-config   # Check configuration")
+            print("  python statusline.py --help           # Show this help")
+            return
+        else:
+            print(f"Unknown argument: {sys.argv[1]}")
+            print("Use --help for available options")
+            return 1
+
     try:
         # 初始化组件
         global config_manager, logger
@@ -205,6 +287,12 @@ def main():
         formatter = StatusFormatter()
         renderer = StatusRenderer()
         logger = get_logger("statusline")
+
+        # 确保配置文件存在
+        if not config_manager.platforms_file.exists():
+            print("Configuration not found. Please run:")
+            print("  python statusline.py --init-config")
+            return 1
 
         # 获取配置
         config = config_manager.get_status_config()
