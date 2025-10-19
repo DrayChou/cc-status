@@ -66,6 +66,7 @@ class BackgroundTaskManager:
 
         # 写入PID文件
         try:
+            import os
             with open(self.pid_file, "w") as f:
                 f.write(str(os.getpid()))
         except Exception as e:
@@ -129,6 +130,8 @@ class BackgroundTaskManager:
                 pid = int(f.read().strip())
 
             # 检查进程是否存在
+            import os
+            import subprocess
             if os.name == 'nt':  # Windows
                 result = subprocess.run(
                     ["tasklist", "/FI", f"PID eq {pid}"],
@@ -250,6 +253,7 @@ class BackgroundTaskManager:
     def _update_status(self):
         """更新状态文件"""
         try:
+            import os
             status_data = {
                 "manager_status": "running" if self.running else "stopped",
                 "pid": os.getpid(),

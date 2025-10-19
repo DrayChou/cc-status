@@ -31,6 +31,7 @@ try:
     from cc_status.display.formatter import StatusFormatter
     from cc_status.display.renderer import StatusRenderer
     from cc_status.utils.logger import get_logger
+    from background_manager import BackgroundTaskManager
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Please ensure all dependencies are installed.")
@@ -265,10 +266,35 @@ def check_config():
         return False
 
 
+def ensure_background_tasks():
+    """确保后台任务正在运行"""
+    try:
+        background_manager = BackgroundTaskManager()
+
+        # 检查后台管理器是否在运行
+        if not background_manager.is_running():
+            logger.info("Starting background task manager...")
+            success = background_manager.start()
+            if success:
+                logger.info("Background task manager started successfully")
+            else:
+                logger.warning("Failed to start background task manager")
+        else:
+            logger.debug("Background task manager already running")
+
+        return True
+    except Exception as e:
+        logger.warning(f"Error ensuring background tasks: {e}")
+        return False
+
+
 def get_today_usage():
-    """获取今日使用量"""
+    """获取今日使用量（支持后台自动更新）"""
     try:
         from datetime import datetime
+
+        # 确保后台任务正在运行
+        ensure_background_tasks()
 
         # 获取缓存管理器
         cache_manager = CacheManager()
@@ -277,9 +303,30 @@ def get_today_usage():
         # 尝试从缓存获取今日使用量
         cache_entry = cache_manager.get(f"usage_daily_{today}")
         if cache_entry is not None:
+            logger.debug(f"Found cached usage data: ${cache_entry.get('total_cost', 0):.2f}")
             return cache_entry
 
-        # 如果没有缓存数据，返回None（避免异步复杂性）
+        # 如果没有缓存数据，触发后台更新
+        logger.debug("No cached usage data found, background update will be triggered")
+        try:
+            from update_usage import UsageUpdater
+            updater = UsageUpdater()
+
+            # 在后台线程中触发更新（不等待结果）
+            import threading
+            def trigger_update():
+                try:
+                    updater.update_usage()
+                except Exception as e:
+                    logger.debug(f"Background usage update failed: {e}")
+
+            update_thread = threading.Thread(target=trigger_update, daemon=True)
+            update_thread.start()
+            logger.debug("Background usage update triggered")
+
+        except Exception as e:
+            logger.debug(f"Failed to trigger usage update: {e}")
+
         return None
 
     except Exception as e:
@@ -338,6 +385,9 @@ def main():
         model_name = session_info.get("model", {}).get("display_name", "Unknown")
         current_dir = session_info.get("workspace", {}).get("current_dir", "")
         git_info = get_git_info(current_dir)
+
+        # 确保后台任务正在运行（启用自动更新）
+        ensure_background_tasks()
 
         # 获取所有启用平台的数据
         platforms_data = {}
