@@ -152,12 +152,21 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
             try:
                 # 获取余额数据
                 balance_data = platform_instance.fetch_balance_data()
+
+                # 获取订阅数据
+                subscription_data = None
+                try:
+                    subscription_data = platform_instance.fetch_subscription_data()
+                except Exception as e:
+                    logger.debug(f"Failed to get subscription for {platform_id}: {e}")
+
                 return platform_id, {
                     "id": platform_id,
                     "name": platform_config.get("name", platform_id),
                     "enabled": True,
                     "has_auth": True,
-                    "balance": balance_data
+                    "balance": balance_data,
+                    "subscription": subscription_data
                 }
             finally:
                 platform_instance.close()
@@ -256,6 +265,29 @@ def check_config():
         return False
 
 
+def get_today_usage():
+    """获取今日使用量"""
+    try:
+        from datetime import datetime
+
+        # 获取缓存管理器
+        cache_manager = CacheManager()
+        today = datetime.now().strftime("%Y%m%d")
+
+        # 尝试从缓存获取今日使用量
+        cache_entry = cache_manager.get(f"usage_daily_{today}")
+        if cache_entry is not None:
+            return cache_entry
+
+        # 如果没有缓存数据，返回None（避免异步复杂性）
+        return None
+
+    except Exception as e:
+        if 'logger' in globals():
+            logger.warning(f"Failed to get today usage: {e}")
+        return None
+
+
 def main():
     """主函数"""
     # 处理命令行参数
@@ -313,6 +345,9 @@ def main():
             platforms_data = get_all_platforms_data(platform_manager, config)
             logger.info(f"Retrieved data for {len(platforms_data)} platforms")
 
+        # 获取今日使用量
+        usage_data = get_today_usage()
+
         # 构建状态数据
         status_data = {
             "model": model_name,
@@ -321,7 +356,7 @@ def main():
             "directory": Path(current_dir).name if current_dir else "Unknown",
             "git": git_info,
             "platforms": platforms_data,
-            "usage": None  # TODO: 实现使用量统计
+            "usage": usage_data
         }
 
         # 格式化状态
