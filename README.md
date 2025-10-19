@@ -271,9 +271,9 @@ cc-status/
 
 ## 🔗 相关项目
 
-- **[cc-launcher](../cc-launcher/)** - Claude Code 多平台启动器
-- **[gaccode.com](../gaccode.com/)** - 原始项目（已分拆）
+- **[cc-launcher](https://github.com/DrayChou/cc-launcher)** - Claude Code 多平台启动器
+- **[gaccode.com](https://github.com/DrayChou/gaccode-statusline)** - 原始项目（已分拆）
 
 ---
 
-> **💡 提示**: cc-status 专注于提供最佳的状态栏体验，如需启动Claude Code的完整解决方案，请配合使用 [cc-launcher](../cc-launcher/)。
+> **💡 提示**: cc-status 专注于提供最佳的状态栏体验，如需启动Claude Code的完整解决方案，请配合使用 [cc-launcher](https://github.com/DrayChou/cc-launcher)。
