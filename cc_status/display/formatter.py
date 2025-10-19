@@ -84,6 +84,7 @@ class StatusFormatter:
                 platform_name = platform_info.get("name", platform_id)
                 balance_info = self._format_single_platform_balance(platform_info)
 
+                # 只有成功获取到余额信息才显示
                 if balance_info:
                     balance_parts.append(f"{platform_name}:{balance_info}")
 
@@ -97,11 +98,8 @@ class StatusFormatter:
         try:
             balance_data = platform_info.get("balance", {})
             if not balance_data:
-                # 如果没有余额数据，显示配置状态
-                if platform_info.get("has_auth", False):
-                    return "Configured"
-                else:
-                    return "Not Configured"
+                # 如果没有余额数据，不显示该平台
+                return None
 
             # 根据不同平台格式化余额
             platform_id = platform_info.get("id", "").lower()
@@ -119,7 +117,7 @@ class StatusFormatter:
 
         except Exception as e:
             self.logger.warning(f"Failed to format single platform balance: {e}")
-            return "Error"
+            return None
 
     def _format_gaccode_balance(self, balance_data: Dict[str, Any]) -> str:
         """格式化 GAC Code 余额信息"""
