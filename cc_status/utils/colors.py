@@ -167,6 +167,10 @@ class ColorScheme:
         if os.environ.get('FORCE_COLOR'):
             return True
 
+        # Claude Code statusLine 环境特殊处理：强制启用颜色
+        if os.environ.get('CLAUDE_CODE_STATUS_LINE'):
+            return True
+
         # 检查是否是TTY
         if hasattr(sys.stdout, 'isatty') and sys.stdout.isatty():
             return True
@@ -176,4 +180,5 @@ class ColorScheme:
         if term in ['xterm', 'xterm-256color', 'screen', 'tmux', 'linux']:
             return True
 
-        return False
+        # 默认启用颜色（特别是在 Claude Code 环境中）
+        return True

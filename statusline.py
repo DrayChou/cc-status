@@ -152,12 +152,12 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
 
             try:
                 # 获取余额数据
-                balance_data = platform_instance.fetch_balance_data()
+                balance_data = platform_manager.fetch_balance_data(platform_instance)
 
                 # 获取订阅数据
                 subscription_data = None
                 try:
-                    subscription_data = platform_instance.fetch_subscription_data()
+                    subscription_data = platform_manager.fetch_subscription_data(platform_instance)
                 except Exception as e:
                     logger.debug(f"Failed to get subscription for {platform_id}: {e}")
 
@@ -170,7 +170,8 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "subscription": subscription_data
                 }
             finally:
-                platform_instance.close()
+                if hasattr(platform_instance, 'close'):
+                    platform_instance.close()
 
         except Exception as e:
             logger.warning(f"Failed to get data for platform {platform_id}: {e}")
