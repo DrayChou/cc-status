@@ -145,3 +145,4 @@ test_*.py
 *_test.py
 !test_usage_update.py
 !test_api_lock.py
+*.pyc
