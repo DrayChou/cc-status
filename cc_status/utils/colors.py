@@ -45,6 +45,11 @@ class ColorScheme:
     GRAY = "\033[38;5;242m"        # 灰色 - 劣质 (Poor)
     EXOTIC_RED = "\033[38;5;196m"  # 红色 - 不朽 (Exotic)
 
+    # 余额状态颜色
+    BALANCE_POSITIVE = "\033[92m"   # 正常余额 - 绿色
+    BALANCE_LOW = "\033[93m"        # 低余额 - 黄色
+    BALANCE_NEGATIVE = "\033[91m"   # 负余额 - 红色
+
     @classmethod
     def get_status_colors(cls) -> Dict[str, str]:
         """获取状态栏颜色方案"""
@@ -114,6 +119,12 @@ class ColorScheme:
                 return cls.BALANCE_LOW    # 低余额 - 黄色
             else:
                 return cls.BALANCE_POSITIVE  # 正常余额 - 绿色
+        elif currency.upper() == "POINTS":
+            # KFC 点数系统阈值
+            if balance <= 50:
+                return cls.BALANCE_LOW    # 低点数 - 黄色
+            else:
+                return cls.BALANCE_POSITIVE  # 正常点数 - 绿色
         else:
             # 美元阈值
             if balance <= 5:

@@ -126,14 +126,14 @@ class StatusFormatter:
                 balance_info = self._format_single_platform_balance(platform_info)
                 subscription_info = self._format_single_platform_subscription(platform_info)
 
-                # 构建平台信息
+                # 构建平台信息，过滤掉Error和None值
                 platform_parts = []
-                if balance_info:
+                if balance_info and balance_info != "Error":
                     platform_parts.append(balance_info)
-                if subscription_info:
+                if subscription_info and subscription_info != "Error":
                     platform_parts.append(subscription_info)
 
-                # 只有有余额或订阅信息才显示
+                # 只有有有效的余额或订阅信息才显示
                 if platform_parts:
                     display_text = " ".join(platform_parts)
                     balance_parts.append(f"{platform_name}:{display_text}")
@@ -164,6 +164,8 @@ class StatusFormatter:
                 return self._format_siliconflow_balance(balance_data)
             elif platform_id == "glm":
                 return self._format_glm_balance(balance_data)
+            elif platform_id == "kfc":
+                return self._format_kfc_balance(balance_data)
             else:
                 return self._format_generic_balance(balance_data)
 
@@ -267,6 +269,38 @@ class StatusFormatter:
                 balance_text = f"${balance:.2f}"
 
             return self._format_balance_with_color(balance_text, balance, currency)
+        except:
+            return "Error"
+
+    def _format_kfc_balance(self, balance_data: Dict[str, Any]) -> str:
+        """格式化 KFC 余额信息"""
+        try:
+            # KFC 返回的是使用次数信息，不是货币余额
+            usages = balance_data.get("usages", [])
+            if not usages:
+                return None
+
+            # 获取FEATURE_CODING的使用情况
+            coding_usage = None
+            for usage in usages:
+                if usage.get("scope") == "FEATURE_CODING":
+                    coding_usage = usage.get("detail", {})
+                    break
+
+            if not coding_usage:
+                return None
+
+            limit = int(coding_usage.get("limit", 0))
+            used = int(coding_usage.get("used", 0))
+            remaining = int(coding_usage.get("remaining", 0))
+
+            if limit > 0:
+                balance_text = f"{remaining}/{limit} ({(used/limit)*100:.1f}%)"
+            else:
+                balance_text = str(remaining)
+
+            # KFC 使用点数系统，不是货币
+            return self._format_balance_with_color(balance_text, remaining, "points")
         except:
             return "Error"
 

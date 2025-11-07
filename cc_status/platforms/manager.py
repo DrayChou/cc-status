@@ -17,6 +17,7 @@ from .deepseek import DeepSeekPlatform
 from .kimi import KimiPlatform
 from .glm import GLMPlatform
 from .siliconflow import SiliconFlowPlatform
+from .kfc import KfcPlatform
 
 
 class PlatformManager:
@@ -43,9 +44,13 @@ class PlatformManager:
             elif platform_name.lower() == "siliconflow":
                 platform = SiliconFlowPlatform(platform_name, platform_config)
                 return platform
+            elif platform_name.lower() == "kfc":
+                platform = KfcPlatform(platform_name, platform_config)
+                return platform
             elif platform_name.lower() == "gaccode":
                 # GAC Code 使用原有的基础实现
                 from .base import BasePlatform
+                
                 platform = BasePlatform(platform_name, platform_config)
                 return platform
             elif platform_name.lower() == "vanchin":
