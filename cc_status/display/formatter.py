@@ -123,20 +123,20 @@ class StatusFormatter:
                     continue
 
                 platform_name = platform_info.get("name", platform_id)
-                balance_info = self._format_single_platform_balance(platform_info)
-                subscription_info = self._format_single_platform_subscription(platform_info)
+                formatted_balance = platform_info.get("formatted_balance")
+                formatted_subscription = platform_info.get("formatted_subscription")
 
-                # 构建平台信息，过滤掉Error和None值
+                # 构建平台信息，过滤掉None值
                 platform_parts = []
-                if balance_info and balance_info != "Error":
-                    platform_parts.append(balance_info)
-                if subscription_info and subscription_info != "Error":
-                    platform_parts.append(subscription_info)
+                if formatted_balance:
+                    platform_parts.append(formatted_balance)
+                if formatted_subscription:
+                    platform_parts.append(formatted_subscription)
 
                 # 只有有有效的余额或订阅信息才显示
                 if platform_parts:
                     display_text = " ".join(platform_parts)
-                    balance_parts.append(f"{platform_name}:{display_text}")
+                    balance_parts.append(display_text)
 
             except Exception as e:
                 self.logger.warning(f"Failed to format balance for {platform_id}: {e}")
@@ -154,19 +154,26 @@ class StatusFormatter:
             # 根据不同平台格式化余额
             platform_id = platform_info.get("id", "").lower()
 
-            if platform_id == "gaccode":
-                return self._format_gaccode_balance(balance_data)
-            elif platform_id == "deepseek":
-                return self._format_deepseek_balance(balance_data)
-            elif platform_id == "kimi":
-                return self._format_kimi_balance(balance_data)
-            elif platform_id == "siliconflow":
-                return self._format_siliconflow_balance(balance_data)
-            elif platform_id == "glm":
-                return self._format_glm_balance(balance_data)
-            elif platform_id == "kfc":
-                return self._format_kfc_balance(balance_data)
+            # 这里应该调用各个平台自己的 format_balance_display 方法
+            # 但由于平台实例不在这个上下文中，我们需要重新创建实例来调用它
+            from ..platforms.manager import PlatformManager
+            from ..core.config import ConfigManager
+
+            config_manager = ConfigManager()
+            platform_manager = PlatformManager(config_manager)
+
+            # 获取平台配置
+            platform_config = config_manager.get_platforms_config()["platforms"].get(platform_id, {})
+
+            # 创建平台实例
+            platform_instance = platform_manager.get_platform_by_name(platform_id, platform_config)
+
+            if platform_instance and hasattr(platform_instance, "format_balance_display"):
+                # 使用平台自己的格式化方法
+                return platform_instance.format_balance_display(balance_data)
             else:
+                # 回退到通用格式化方法
+                self.logger.warning(f"Platform {platform_id} does not have format_balance_display method, using generic format")
                 return self._format_generic_balance(balance_data)
 
         except Exception as e:
@@ -200,16 +207,25 @@ class StatusFormatter:
     def _format_deepseek_balance(self, balance_data: Dict[str, Any]) -> str:
         """格式化 DeepSeek 余额信息"""
         try:
-            balance = balance_data.get("balance", 0)
-            currency = balance_data.get("currency", "USD")
+            # DeepSeek API 返回的是包含 balance_infos 的结构
+            balance_infos = balance_data.get("balance_infos", [])
+
+            if not balance_infos:
+                return "DeepSeek:NoData"
+
+            # 获取总余额（通常第一个 balance_info 包含总余额信息）
+            primary_balance = balance_infos[0]
+            total_balance = float(primary_balance.get("total_balance", 0))
+            currency = primary_balance.get("currency", "USD")
 
             if currency == "CNY":
-                balance_text = f"¥{balance:.2f}"
+                balance_text = f"¥{total_balance:.2f}"
             else:
-                balance_text = f"${balance:.2f}"
+                balance_text = f"${total_balance:.2f}"
 
-            return self._format_balance_with_color(balance_text, balance, currency)
-        except:
+            return self._format_balance_with_color(balance_text, total_balance, currency)
+        except Exception as e:
+            self.logger.warning(f"Failed to format DeepSeek balance: {e}")
             return "Error"
 
     def _format_kimi_balance(self, balance_data: Dict[str, Any]) -> str:

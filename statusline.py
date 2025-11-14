@@ -153,11 +153,22 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
             try:
                 # 获取余额数据
                 balance_data = platform_manager.fetch_balance_data(platform_instance)
+                formatted_balance = None
+
+                if balance_data:
+                    try:
+                        # 使用平台自己的format_balance_display方法格式化余额
+                        formatted_balance = platform_instance.format_balance_display(balance_data)
+                    except Exception as e:
+                        logger.debug(f"Failed to format balance for {platform_id}: {e}")
 
                 # 获取订阅数据
                 subscription_data = None
                 try:
                     subscription_data = platform_manager.fetch_subscription_data(platform_instance)
+                    formatted_subscription = None
+                    if subscription_data:
+                        formatted_subscription = platform_instance.format_subscription_display(subscription_data)
                 except Exception as e:
                     logger.debug(f"Failed to get subscription for {platform_id}: {e}")
 
@@ -167,7 +178,9 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "enabled": True,
                     "has_auth": True,
                     "balance": balance_data,
-                    "subscription": subscription_data
+                    "formatted_balance": formatted_balance,
+                    "subscription": subscription_data,
+                    "formatted_subscription": formatted_subscription
                 }
             finally:
                 if hasattr(platform_instance, 'close'):
