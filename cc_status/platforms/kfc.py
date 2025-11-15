@@ -194,6 +194,7 @@ class KfcPlatform(BasePlatform):
             limit = int(coding_usage.get("limit", 0))
             used = int(coding_usage.get("used", 0))
             remaining = int(coding_usage.get("remaining", 0))
+            reset_time = coding_usage.get("resetTime", "")  # 获取重置时间
 
             self.logger.debug(
                 "KFC usage data structure",
@@ -204,11 +205,30 @@ class KfcPlatform(BasePlatform):
                 },
             )
 
-            # 计算使用率
-            if limit > 0:
-                usage_percentage = (used / limit) * 100
+            # 格式化重置时间
+            reset_display = ""
+            if reset_time:
+                try:
+                    from datetime import datetime
+                    # 解析ISO格式时间：2025-11-22T03:21:23.580297585Z
+                    if 'T' in reset_time:
+                        # 提取日期和时间部分
+                        date_part = reset_time.split('T')[0]  # 2025-11-22
+                        time_part = reset_time.split('T')[1].split('.')[0]  # 03:21:23
+
+                        # 格式化为月-日 时:分
+                        date_obj = datetime.strptime(date_part, "%Y-%m-%d")
+                        time_obj = datetime.strptime(time_part, "%H:%M:%S")
+
+                        reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+                        reset_display = f"[{reset_short}]"
+                    else:
+                        reset_display = f"[{reset_time[:16]}]"  # 备用方案
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse reset time: {e}")
+                    reset_display = f"[{reset_time[:16]}]"
             else:
-                usage_percentage = 0
+                reset_display = "[NoReset]"
 
             # 颜色代码基于剩余次数
             if remaining <= 50:
@@ -223,8 +243,8 @@ class KfcPlatform(BasePlatform):
 
             reset = "\033[0m"
 
-            # 格式化显示
-            balance_str = f"KFC:{color}{remaining}/{limit}({usage_percentage:.1f}%){reset}"
+            # 格式化显示 - 显示重置时间而不是百分比（去掉平台名称前缀，由formatter统一添加）
+            balance_str = f"{color}{remaining}/{limit}{reset}{reset_display}"
 
             self.logger.debug(
                 "KFC balance formatting completed",
@@ -233,7 +253,7 @@ class KfcPlatform(BasePlatform):
                     "color_used": color_name,
                     "remaining": remaining,
                     "limit": limit,
-                    "usage_percentage": usage_percentage,
+                    "reset_time": reset_time,
                 },
             )
 

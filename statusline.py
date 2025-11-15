@@ -167,7 +167,8 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "enabled": True,
                     "has_auth": True,
                     "balance": balance_data,
-                    "subscription": subscription_data
+                    "subscription": subscription_data,
+                    "platform_instance": platform_instance  # 添加平台实例供formatter使用
                 }
             finally:
                 if hasattr(platform_instance, 'close'):

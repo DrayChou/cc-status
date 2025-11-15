@@ -193,7 +193,9 @@ class BackgroundTaskManager:
 
             updated_count = 0
 
-            for platform_id, platform_config in platforms_config.items():
+            # 获取平台配置（在platforms键下）
+            platforms = platforms_config.get("platforms", {})
+            for platform_id, platform_config in platforms.items():
                 if not isinstance(platform_config, dict) or not platform_config.get("enabled", False):
                     continue
 

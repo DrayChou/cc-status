@@ -117,9 +117,10 @@ class KimiPlatform(BasePlatform):
         )
 
         try:
-            # Kimi API 返回结构可能不同，需要适配
-            balance = balance_data.get("balance", 0)
-            currency = balance_data.get("currency", "CNY")
+            # Kimi API 返回结构：{"code": 0, "data": {"available_balance": 5.19, "voucher_balance": 0, "cash_balance": 5.19}}
+            data = balance_data.get("data", {})
+            balance = data.get("available_balance", 0)  # 使用available_balance字段
+            currency = "CNY"  # Kimi只支持人民币
 
             self.logger.debug(
                 "Kimi balance data structure",
@@ -129,9 +130,12 @@ class KimiPlatform(BasePlatform):
                 },
             )
 
-            # 颜色代码基于余额
+            # 颜色代码基于余额 - 支持负值显示
             if currency == "CNY":
-                if balance <= 10:
+                if balance < 0:  # 负余额 - 红色
+                    color = "\033[91m"
+                    color_name = "red"
+                elif balance <= 10:
                     color = "\033[91m"  # 红色
                     color_name = "red"
                 elif balance <= 50:
@@ -141,7 +145,10 @@ class KimiPlatform(BasePlatform):
                     color = "\033[92m"  # 绿色
                     color_name = "green"
             else:
-                if balance <= 1:
+                if balance < 0:  # 负余额 - 红色
+                    color = "\033[91m"
+                    color_name = "red"
+                elif balance <= 1:
                     color = "\033[91m"  # 红色
                     color_name = "red"
                 elif balance <= 5:
@@ -153,11 +160,11 @@ class KimiPlatform(BasePlatform):
 
             reset = "\033[0m"
 
-            # 格式化显示
+            # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"Kimi.B:{color}{balance:.2f}CNY{reset}"
+                balance_str = f"{color}{balance:.2f}CNY{reset}"
             else:
-                balance_str = f"Kimi.B:{color}${balance:.2f}{reset}"
+                balance_str = f"{color}${balance:.2f}{reset}"
 
             self.logger.debug(
                 "Kimi balance formatting completed",

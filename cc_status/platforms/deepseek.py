@@ -133,12 +133,14 @@ class DeepSeekPlatform(BasePlatform):
                 },
             )
 
+            # 即使is_available为False，也要显示余额（可能是负值）
+            # 这是为了让用户看到真实的负余额情况，比如账户欠费-0.32元
             if not is_available:
                 self.logger.warning(
-                    "DeepSeek balance unavailable",
-                    {"is_available": is_available},
+                    "DeepSeek balance unavailable - showing actual balance",
+                    {"is_available": is_available, "balance_infos": balance_infos},
                 )
-                return "DeepSeek.B:\033[91mUnavailable\033[0m"
+                # 继续处理，显示真实余额而不是"Unavailable"
 
             if not balance_infos:
                 self.logger.warning(
@@ -165,8 +167,11 @@ class DeepSeekPlatform(BasePlatform):
                 },
             )
 
-            # 颜色代码基于余额
-            if total_balance <= 1:
+            # 颜色代码基于余额 - 支持负值显示
+            if total_balance < 0:  # 负余额 - 红色
+                color = "\033[91m"
+                color_name = "red"
+            elif total_balance <= 1:
                 color = "\033[91m"  # 红色
                 color_name = "red"
             elif total_balance <= 10:
@@ -177,11 +182,11 @@ class DeepSeekPlatform(BasePlatform):
                 color_name = "green"
             reset = "\033[0m"
 
-            # 格式化显示
+            # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"DeepSeek.B:{color}{total_balance:.2f}CNY{reset}"
+                balance_str = f"{color}{total_balance:.2f}CNY{reset}"
             else:
-                balance_str = f"DeepSeek.B:{color}${total_balance:.2f}{reset}"
+                balance_str = f"{color}${total_balance:.2f}{reset}"
 
             # 如果有多个余额信息，显示详细信息
             if len(balance_infos) > 1:

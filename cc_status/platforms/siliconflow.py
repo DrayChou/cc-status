@@ -116,9 +116,11 @@ class SiliconFlowPlatform(BasePlatform):
         )
 
         try:
-            # SiliconFlow API 返回结构可能不同，需要适配
-            balance = balance_data.get("balance", 0)
-            currency = balance_data.get("currency", "CNY")
+            # SiliconFlow API 返回结构：{"code": 20000, "data": {"balance": "24.671", "totalBalance": "32.1293"}}
+            data = balance_data.get("data", {})
+            balance = float(data.get("balance", 0))  # 可用余额
+            total_balance = float(data.get("totalBalance", 0))  # 总余额
+            currency = "CNY"  # SiliconFlow只支持人民币
 
             self.logger.debug(
                 "SiliconFlow balance data structure",
@@ -128,9 +130,12 @@ class SiliconFlowPlatform(BasePlatform):
                 },
             )
 
-            # 颜色代码基于余额
+            # 颜色代码基于余额 - 支持负值显示
             if currency == "CNY":
-                if balance <= 10:
+                if balance < 0:  # 负余额 - 红色
+                    color = "\033[91m"
+                    color_name = "red"
+                elif balance <= 10:
                     color = "\033[91m"  # 红色
                     color_name = "red"
                 elif balance <= 50:
@@ -140,7 +145,10 @@ class SiliconFlowPlatform(BasePlatform):
                     color = "\033[92m"  # 绿色
                     color_name = "green"
             else:
-                if balance <= 5:
+                if balance < 0:  # 负余额 - 红色
+                    color = "\033[91m"
+                    color_name = "red"
+                elif balance <= 5:
                     color = "\033[91m"  # 红色
                     color_name = "red"
                 elif balance <= 25:
@@ -152,11 +160,9 @@ class SiliconFlowPlatform(BasePlatform):
 
             reset = "\033[0m"
 
-            # 格式化显示
+            # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"SiliconFlow.B:{color}{balance:.2f}CNY{reset}"
-            else:
-                balance_str = f"SiliconFlow.B:{color}${balance:.2f}{reset}"
+                balance_str = f"{color}{balance:.2f}CNY{reset}"
 
             self.logger.debug(
                 "SiliconFlow balance formatting completed",
@@ -164,6 +170,7 @@ class SiliconFlowPlatform(BasePlatform):
                     "final_display": balance_str,
                     "color_used": color_name,
                     "balance": balance,
+                    "total_balance": total_balance,
                     "currency": currency,
                 },
             )
