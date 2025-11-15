@@ -18,6 +18,7 @@ from .kimi import KimiPlatform
 from .glm import GLMPlatform
 from .siliconflow import SiliconFlowPlatform
 from .kfc import KfcPlatform
+from .minimaxi import MinimaxiPlatform
 
 
 class PlatformManager:
@@ -46,6 +47,9 @@ class PlatformManager:
                 return platform
             elif platform_name.lower() == "kfc":
                 platform = KfcPlatform(platform_name, platform_config)
+                return platform
+            elif platform_name.lower() == "minimaxi":
+                platform = MinimaxiPlatform(platform_name, platform_config)
                 return platform
             elif platform_name.lower() == "gaccode":
                 # GAC Code 使用原有的基础实现

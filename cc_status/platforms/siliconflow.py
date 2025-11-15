@@ -64,7 +64,12 @@ class SiliconFlowPlatform(BasePlatform):
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
         """Fetch balance data from SiliconFlow API"""
         try:
-            auth_token = self._get_auth_token()
+            # 验证api_key是否配置
+            auth_token = self.config.get("api_key") or self.config.get("auth_token")
+            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
+                self.logger.debug("SiliconFlow api_key not configured, skipping balance query")
+                return None
+
             self.logger.debug(
                 "Starting SiliconFlow balance fetch",
                 {"token_length": len(auth_token) if auth_token else 0},

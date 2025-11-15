@@ -65,9 +65,10 @@ class DeepSeekPlatform(BasePlatform):
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
         """Fetch balance data from DeepSeek API"""
         try:
-            auth_token = self._get_auth_token()
-            if not auth_token:
-                self.logger.warning("No auth token available for DeepSeek balance fetch")
+            # 验证auth_token是否配置
+            auth_token = self.config.get("auth_token") or self.config.get("api_key")
+            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
+                self.logger.debug("DeepSeek auth_token/api_key not configured, skipping balance query")
                 return None
 
             self.logger.debug(

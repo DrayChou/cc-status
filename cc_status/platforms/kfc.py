@@ -66,10 +66,15 @@ class KfcPlatform(BasePlatform):
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
         """Fetch balance data from KFC API using the provided curl command pattern"""
         try:
-            auth_token = self._get_auth_token()
+            # 验证balance_token或login_token是否配置
+            balance_token = self.config.get("balance_token") or self.config.get("login_token")
+            if not balance_token or not isinstance(balance_token, str) or len(balance_token.strip()) == 0:
+                self.logger.debug("KFC balance_token/login_token not configured, skipping balance query")
+                return None
+
             self.logger.debug(
                 "Starting KFC balance fetch",
-                {"token_length": len(auth_token) if auth_token else 0},
+                {"token_length": len(balance_token) if balance_token else 0},
             )
 
             # 使用你提供的API端点进行余额查询

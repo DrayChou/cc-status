@@ -66,10 +66,10 @@ class GLMPlatform(BasePlatform):
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
         """Fetch balance data from GLM API using login_token"""
         try:
-            # GLM需要使用login_token而不是auth_token
+            # 验证login_token是否配置
             login_token = self.config.get("login_token")
-            if not login_token:
-                self.logger.warning("GLM platform requires login_token for balance queries")
+            if not login_token or not isinstance(login_token, str) or len(login_token.strip()) == 0:
+                self.logger.debug("GLM login_token not configured, skipping balance query")
                 return None
 
             self.logger.debug(
@@ -104,40 +104,6 @@ class GLMPlatform(BasePlatform):
                 }
 
                 return combined_data
-            else:
-                self.logger.warning(
-                    "GLM balance API returned None or empty data",
-                    {"possible_cause": "API request failed or returned empty data"},
-                )
-                # 返回API不可用状态
-                return {
-                    "api_unavailable": True,
-                    "reason": "API returned empty response"
-                }
-
-            if balance_data:
-                # 检查API是否返回错误
-                if balance_data.get("code") == 500 or balance_data.get("success") == False:
-                    error_msg = balance_data.get("msg", "Unknown API error")
-                    self.logger.warning(f"GLM API returned error: {error_msg}")
-                    # 返回错误信息，让前端显示API错误状态
-                    return {
-                        "api_error": True,
-                        "error_code": balance_data.get("code"),
-                        "error_msg": error_msg,
-                        "raw_response": balance_data
-                    }
-
-                self.logger.info(
-                    "GLM balance data fetched successfully",
-                    {
-                        "data_keys": list(balance_data.keys()),
-                        "data_type": type(balance_data).__name__,
-                        "has_data": "data" in balance_data,
-                        "success": balance_data.get("success"),
-                    },
-                )
-                return balance_data
             else:
                 self.logger.warning(
                     "GLM balance API returned None or empty data",

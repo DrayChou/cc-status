@@ -65,7 +65,12 @@ class KimiPlatform(BasePlatform):
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
         """Fetch balance data from Kimi API"""
         try:
-            auth_token = self._get_auth_token()
+            # 验证auth_token是否配置
+            auth_token = self.config.get("auth_token") or self.config.get("api_key")
+            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
+                self.logger.debug("Kimi auth_token/api_key not configured, skipping balance query")
+                return None
+
             self.logger.debug(
                 "Starting Kimi balance fetch",
                 {"token_length": len(auth_token) if auth_token else 0},
