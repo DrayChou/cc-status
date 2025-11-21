@@ -109,10 +109,10 @@ class GLMPlatform(BasePlatform):
                     "GLM balance API returned None or empty data",
                     {"possible_cause": "API request failed or returned empty data"},
                 )
-                # 返回API不可用状态
+                # 返回API不可用状态，包含更多信息
                 return {
                     "api_unavailable": True,
-                    "reason": "API returned empty response"
+                    "reason": "API returned empty response - token may be expired or invalid"
                 }
 
         except Exception as e:
@@ -237,7 +237,7 @@ class GLMPlatform(BasePlatform):
         # 处理空数据情况
         if combined_data is None:
             self.logger.info("No combined data available for display")
-            return "GLM.B:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting GLM combined data formatting",
@@ -252,11 +252,11 @@ class GLMPlatform(BasePlatform):
             if combined_data.get("api_error"):
                 error_code = combined_data.get("error_code", "ERROR")
                 self.logger.warning(f"GLM API error, displaying error code: {error_code}")
-                return f"GLM.B:\033[91mAPI{error_code}\033[0m"
+                return f"\033[91mAPI{error_code}\033[0m"
 
             if combined_data.get("api_unavailable"):
                 self.logger.warning("GLM API unavailable")
-                return f"GLM.B:\033[91mUnavail\033[0m"
+                return f"\033[91mUnavail\033[0m"
 
             # 提取余额数据
             balance_data = combined_data.get("balance_data", {})
@@ -346,7 +346,7 @@ class GLMPlatform(BasePlatform):
             return final_display
         except Exception as e:
             self.logger.error(f"GLM combined formatting failed: {e}")
-            return f"GLM.B:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"
 
     def format_subscription_display(self, subscription_data: Dict[str, Any]) -> str:
         """Format GLM subscription for display"""
