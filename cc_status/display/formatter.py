@@ -125,6 +125,7 @@ class StatusFormatter:
                 platform_name = platform_info.get("name", platform_id)
                 balance_info = self._format_single_platform_balance(platform_info)
                 subscription_info = self._format_single_platform_subscription(platform_info)
+                usage_info = self._format_single_platform_usage(platform_info)
 
                 # 构建平台信息，过滤掉Error和None值
                 platform_parts = []
@@ -132,6 +133,8 @@ class StatusFormatter:
                     platform_parts.append(balance_info)
                 if subscription_info and subscription_info != "Error":
                     platform_parts.append(subscription_info)
+                if usage_info and usage_info != "Error":
+                    platform_parts.append(usage_info)
 
                 # 只有有有效的余额或订阅信息才显示
                 if platform_parts:
@@ -359,6 +362,25 @@ class StatusFormatter:
             return self._format_balance_with_color(balance_text, remaining, "points")
         except:
             return "Error"
+
+    def _format_single_platform_usage(self, platform_info: Dict[str, Any]) -> str:
+        """格式化单个平台的用量信息"""
+        try:
+            usage_data = platform_info.get("usage", {})
+            if not usage_data:
+                return None
+
+            # 检查平台是否有自己的format_usage_display方法
+            platform_instance = platform_info.get("platform_instance")
+            if platform_instance and hasattr(platform_instance, 'format_usage_display'):
+                # 使用平台自己的格式化方法
+                return platform_instance.format_usage_display(usage_data)
+
+            return None  # 如果没有专用的用量显示方法，则不显示
+
+        except Exception as e:
+            self.logger.warning(f"Failed to format single platform usage: {e}")
+            return None
 
     def _format_single_platform_subscription(self, platform_info: Dict[str, Any]) -> str:
         """格式化单个平台的订阅信息"""

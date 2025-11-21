@@ -85,6 +85,14 @@ class PlatformManager:
             self.logger.warning(f"Platform {platform_instance.name if hasattr(platform_instance, 'name') else 'unknown'} does not have fetch_subscription_data method")
             return None
 
+    def fetch_usage_data(self, platform_instance) -> Optional[Dict[str, Any]]:
+        """获取平台用量数据的代理方法"""
+        if platform_instance and hasattr(platform_instance, 'fetch_usage_data'):
+            return platform_instance.fetch_usage_data()
+        else:
+            self.logger.debug(f"Platform {platform_instance.name if hasattr(platform_instance, 'name') else 'unknown'} does not have fetch_usage_data method")
+            return None
+
     def close(self):
         """关闭平台管理器，清理资源"""
         pass

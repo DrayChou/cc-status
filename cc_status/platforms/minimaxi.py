@@ -80,7 +80,7 @@ class MinimaxiPlatform(BasePlatform):
             return None
 
         # 获取必需的参数
-        group_id = self.config.get("group_id")
+        group_id = self.config.get("group_id") or self.config.get("GroupId")
         if not group_id:
             self.logger.error("No group_id configured for Minimaxi")
             return None
@@ -151,7 +151,7 @@ class MinimaxiPlatform(BasePlatform):
                 return None
 
             # 验证group_id是否配置
-            group_id = self.config.get("group_id")
+            group_id = self.config.get("group_id") or self.config.get("GroupId")
             if not group_id:
                 self.logger.warning("Minimaxi group_id not configured")
                 return None
@@ -287,3 +287,147 @@ class MinimaxiPlatform(BasePlatform):
         except Exception as e:
             self.logger.error(f"Minimaxi subscription details formatting failed: {e}")
             return f"Minimaxi.Sub:Error({str(e)[:20]})"
+
+    def fetch_usage_data(self) -> Optional[Dict[str, Any]]:
+        """Fetch usage data from Minimaxi API"""
+        try:
+            # 验证login_token是否配置
+            login_token = self.config.get("login_token")
+            if not login_token or not isinstance(login_token, str) or len(login_token.strip()) == 0:
+                self.logger.debug("Minimaxi login_token not configured, skipping usage query")
+                return None
+
+            # 验证group_id是否配置
+            group_id = self.config.get("group_id") or self.config.get("GroupId")
+            if not group_id:
+                self.logger.warning("Minimaxi group_id not configured")
+                return None
+
+            self.logger.debug(
+                "Starting Minimaxi usage fetch",
+                {"token_length": len(login_token) if login_token else 0},
+            )
+
+            # 使用Minimaxi的用量查询端点
+            usage_data = self.make_request("/openplatform/coding_plan/remains")
+
+            if usage_data:
+                self.logger.info(
+                    "Minimaxi usage data fetched successfully",
+                    {
+                        "data_keys": list(usage_data.keys()),
+                        "data_type": type(usage_data).__name__,
+                        "has_model_remains": "model_remains" in usage_data,
+                        "base_resp_status": usage_data.get("base_resp", {}).get("status_code"),
+                    },
+                )
+                return usage_data
+            else:
+                self.logger.warning(
+                    "Minimaxi usage API returned None",
+                    {"possible_cause": "API request failed or returned empty data"},
+                )
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Minimaxi usage fetch failed: {e}")
+            return None
+
+    def format_usage_display(self, usage_data: Dict[str, Any]) -> str:
+        """Format Minimaxi usage for display"""
+        # 处理空数据情况
+        if usage_data is None:
+            self.logger.info("No usage data available for display")
+            return "Minimaxi.Usage:\033[91mNoData\033[0m"
+
+        self.logger.debug(
+            "Starting Minimaxi usage formatting",
+            {
+                "usage_data_keys": list(usage_data.keys()),
+                "usage_data_type": type(usage_data).__name__,
+            },
+        )
+
+        try:
+            # 检查API响应状态
+            base_resp = usage_data.get("base_resp", {})
+            if base_resp.get("status_code") != 0:
+                error_msg = base_resp.get("status_msg", "Unknown error")
+                self.logger.warning(f"Minimaxi usage API returned error: {error_msg}")
+                return f"Minimaxi.Usage:\033[91m{error_msg}\033[0m"
+
+            # 提取模型剩余用量数据
+            model_remains = usage_data.get("model_remains", [])
+            if not model_remains:
+                self.logger.warning("Minimaxi usage data missing 'model_remains' field")
+                return "Minimaxi.Usage:\033[91mNoUsage\033[0m"
+
+            # 取第一个模型的数据（通常只有一个）
+            primary_model = model_remains[0]
+
+            # 提取关键数据
+            model_name = primary_model.get("model_name", "Unknown")
+            total_count = primary_model.get("current_interval_total_count", 0)
+            used_count = primary_model.get("current_interval_usage_count", 0)
+            remains_time = primary_model.get("remains_time", 0)
+            end_time = primary_model.get("end_time", 0)
+
+            # 计算剩余额度
+            remaining_count = total_count - used_count
+            usage_percentage = (used_count / total_count * 100) if total_count > 0 else 0
+
+            # 计算重置时间（从end_time时间戳转换为可读格式）
+            try:
+                from datetime import datetime
+                if end_time > 0:
+                    # 时间戳是毫秒，需要转换为秒
+                    reset_time = datetime.fromtimestamp(end_time / 1000)
+                    reset_short = reset_time.strftime("%m-%d %H:%M")
+
+                    # 计算剩余小时数
+                    now = datetime.now()
+                    hours_left = (reset_time - now).total_seconds() / 3600
+
+                    if hours_left <= 1:
+                        time_color = "\033[91m"  # 红色
+                    elif hours_left <= 6:
+                        time_color = "\033[93m"  # 黄色
+                    else:
+                        time_color = "\033[92m"  # 绿色
+                else:
+                    reset_short = "Unknown"
+                    time_color = "\033[91m"
+            except Exception as e:
+                self.logger.error(f"Failed to parse Minimaxi reset time: {e}")
+                reset_short = "Error"
+                time_color = "\033[91m"
+
+            # 根据使用率选择颜色
+            if usage_percentage >= 90:
+                usage_color = "\033[91m"  # 红色
+            elif usage_percentage >= 70:
+                usage_color = "\033[93m"  # 黄色
+            else:
+                usage_color = "\033[92m"  # 绿色
+
+            reset_color = "\033[0m"
+
+            # 格式化显示：使用情况 (重置时间)
+            usage_str = f"{usage_color}{used_count}/{total_count}{reset_color} ({time_color}{reset_short}{reset_color})"
+
+            self.logger.debug(
+                "Minimaxi usage formatting completed",
+                {
+                    "final_display": usage_str,
+                    "model_name": model_name,
+                    "usage": f"{used_count}/{total_count}",
+                    "usage_percentage": f"{usage_percentage:.1f}%",
+                    "reset_time": reset_short,
+                },
+            )
+
+            return usage_str
+
+        except Exception as e:
+            self.logger.error(f"Minimaxi usage formatting failed: {e}")
+            return f"Minimaxi.Usage:Error({str(e)[:20]})"

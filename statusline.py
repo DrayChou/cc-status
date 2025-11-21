@@ -161,6 +161,13 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 except Exception as e:
                     logger.debug(f"Failed to get subscription for {platform_id}: {e}")
 
+                # 获取用量数据
+                usage_data = None
+                try:
+                    usage_data = platform_manager.fetch_usage_data(platform_instance)
+                except Exception as e:
+                    logger.debug(f"Failed to get usage for {platform_id}: {e}")
+
                 return platform_id, {
                     "id": platform_id,
                     "name": platform_config.get("name", platform_id),
@@ -168,6 +175,7 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "has_auth": True,
                     "balance": balance_data,
                     "subscription": subscription_data,
+                    "usage": usage_data,
                     "platform_instance": platform_instance  # 添加平台实例供formatter使用
                 }
             finally:
