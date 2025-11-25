@@ -165,9 +165,19 @@ class SiliconFlowPlatform(BasePlatform):
 
             reset = "\033[0m"
 
+            # 格式化余额显示（保留2位小数，最小值为0.01）
+            # 处理负数，最小显示为-0.01
+            if balance < 0 and abs(balance) < 0.01:
+                display_balance = -0.01
+            # 处理正数，最小显示为0.01（但如果为0则显示0）
+            elif 0 < balance < 0.01:
+                display_balance = 0.01
+            else:
+                display_balance = balance
+
             # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"{color}{balance:.2f}CNY{reset}"
+                balance_str = f"{color}{display_balance:.2f}CNY{reset}"
 
             self.logger.debug(
                 "SiliconFlow balance formatting completed",

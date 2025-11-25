@@ -248,8 +248,8 @@ class MinimaxiPlatform(BasePlatform):
 
                 reset = "\033[0m"
 
-                # 格式化显示（不包含平台名称，由formatter统一添加）
-                subscription_str = f"{color}{expiry_short}{reset}"
+                # 格式化显示，使用中括号（不包含平台名称，由formatter统一添加）
+                subscription_str = f"{color}[{expiry_short}]{reset}"
 
                 self.logger.debug(
                     "Minimaxi formatting completed",
@@ -334,14 +334,14 @@ class MinimaxiPlatform(BasePlatform):
             return None
 
     def format_usage_display(self, usage_data: Dict[str, Any]) -> str:
-        """Format Minimaxi usage for display"""
+        """Format Minimaxi usage and subscription for display (combined)"""
         # 处理空数据情况
         if usage_data is None:
             self.logger.info("No usage data available for display")
             return "Minimaxi.Usage:\033[91mNoData\033[0m"
 
         self.logger.debug(
-            "Starting Minimaxi usage formatting",
+            "Starting Minimaxi combined usage formatting",
             {
                 "usage_data_keys": list(usage_data.keys()),
                 "usage_data_type": type(usage_data).__name__,
@@ -402,32 +402,62 @@ class MinimaxiPlatform(BasePlatform):
                 reset_short = "Error"
                 time_color = "\033[91m"
 
-            # 根据使用率选择颜色
-            if usage_percentage >= 90:
-                usage_color = "\033[91m"  # 红色
-            elif usage_percentage >= 70:
-                usage_color = "\033[93m"  # 黄色
+            # 根据剩余量选择颜色：剩余越多越好（绿色），剩余越少越差（红色）
+            remaining_percentage = (remaining_count / total_count * 100) if total_count > 0 else 0
+            if remaining_percentage <= 10:
+                usage_color = "\033[91m"  # 红色 - 剩余很少
+            elif remaining_percentage <= 30:
+                usage_color = "\033[93m"  # 黄色 - 剩余较少
             else:
-                usage_color = "\033[92m"  # 绿色
+                usage_color = "\033[92m"  # 绿色 - 剩余充足
 
             reset_color = "\033[0m"
 
-            # 格式化显示：使用情况 (重置时间)
-            usage_str = f"{usage_color}{used_count}/{total_count}{reset_color} ({time_color}{reset_short}{reset_color})"
+            # 尝试获取订阅数据来合并显示
+            subscription_display = ""
+            try:
+                # 获取订阅数据
+                subscription_data = self.fetch_balance_data()
+                if subscription_data:
+                    current_subscribe = subscription_data.get("current_subscribe", {})
+                    if current_subscribe:
+                        end_time_str = current_subscribe.get("current_subscribe_end_time", "")
+                        if end_time_str:
+                            try:
+                                # Parse date (format: "12/15/2025")
+                                date_obj = datetime.strptime(end_time_str, "%m/%d/%Y")
+                                expiry_short = date_obj.strftime("%m-%d")
+                                subscription_display = f"[{expiry_short}] "
+                            except Exception as e:
+                                self.logger.debug(f"Failed to parse subscription date: {e}")
+            except Exception as e:
+                self.logger.debug(f"Failed to get subscription data for combined display: {e}")
+
+            # 按照正确顺序格式化显示：1余额 → 2使用占比和总量 → 3刷新时间 → 4到期时间
+            # 1. 余额/使用量：remaining_count/total_count
+            # 2. 使用占比（已在remaining_count/total_count中体现）
+            # 3. 刷新时间：(reset_short)
+            # 4. 到期时间：[subscription_display]
+
+            if subscription_display:
+                usage_str = f"{usage_color}{remaining_count}/{total_count}{reset_color}({time_color}{reset_short}{reset_color}){subscription_display}"
+            else:
+                usage_str = f"{usage_color}{remaining_count}/{total_count}{reset_color}({time_color}{reset_short}{reset_color})"
 
             self.logger.debug(
-                "Minimaxi usage formatting completed",
+                "Minimaxi combined usage formatting completed",
                 {
                     "final_display": usage_str,
                     "model_name": model_name,
-                    "usage": f"{used_count}/{total_count}",
+                    "usage": f"{remaining_count}/{total_count}",
                     "usage_percentage": f"{usage_percentage:.1f}%",
                     "reset_time": reset_short,
+                    "has_subscription": bool(subscription_display),
                 },
             )
 
             return usage_str
 
         except Exception as e:
-            self.logger.error(f"Minimaxi usage formatting failed: {e}")
+            self.logger.error(f"Minimaxi combined usage formatting failed: {e}")
             return f"Minimaxi.Usage:Error({str(e)[:20]})"

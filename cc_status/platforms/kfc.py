@@ -221,19 +221,27 @@ class KfcPlatform(BasePlatform):
                         date_part = reset_time.split('T')[0]  # 2025-11-22
                         time_part = reset_time.split('T')[1].split('.')[0]  # 03:21:23
 
-                        # 格式化为月-日 时:分
+                        # 格式化时间
                         date_obj = datetime.strptime(date_part, "%Y-%m-%d")
                         time_obj = datetime.strptime(time_part, "%H:%M:%S")
 
-                        reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
-                        reset_display = f"[{reset_short}]"
+                        # 检查是否是今天
+                        today = datetime.now()
+                        if date_obj.date() == today.date():
+                            # 今天刷新，只显示时间 (HH:MM)
+                            reset_short = time_obj.strftime('%H:%M')
+                        else:
+                            # 其他日期显示月-日 时:分
+                            reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+
+                        reset_display = f"({reset_short})"  # 使用圆括号
                     else:
-                        reset_display = f"[{reset_time[:16]}]"  # 备用方案
+                        reset_display = f"({reset_time[:16]})"  # 备用方案
                 except Exception as e:
                     self.logger.warning(f"Failed to parse reset time: {e}")
-                    reset_display = f"[{reset_time[:16]}]"
+                    reset_display = f"({reset_time[:16]})"
             else:
-                reset_display = "[NoReset]"
+                reset_display = "(NoReset)"
 
             # 颜色代码基于剩余次数
             if remaining <= 50:

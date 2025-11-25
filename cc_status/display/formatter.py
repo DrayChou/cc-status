@@ -123,18 +123,29 @@ class StatusFormatter:
                     continue
 
                 platform_name = platform_info.get("name", platform_id)
+                platform_id = platform_info.get("id", "").lower()
                 balance_info = self._format_single_platform_balance(platform_info)
                 subscription_info = self._format_single_platform_subscription(platform_info)
                 usage_info = self._format_single_platform_usage(platform_info)
 
                 # 构建平台信息，过滤掉Error和None值
                 platform_parts = []
-                if balance_info and balance_info != "Error":
-                    platform_parts.append(balance_info)
-                if subscription_info and subscription_info != "Error":
-                    platform_parts.append(subscription_info)
-                if usage_info and usage_info != "Error":
-                    platform_parts.append(usage_info)
+
+                # 特殊处理Minimaxi：如果有usage_data（已包含订阅信息），则不显示balance_info
+                if platform_id == "minimaxi":
+                    if usage_info and usage_info != "Error":
+                        platform_parts.append(usage_info)
+                    # 如果没有usage_data但有balance_data，则显示balance_data
+                    elif balance_info and balance_info != "Error":
+                        platform_parts.append(balance_info)
+                else:
+                    # 其他平台的正常逻辑
+                    if balance_info and balance_info != "Error":
+                        platform_parts.append(balance_info)
+                    if subscription_info and subscription_info != "Error":
+                        platform_parts.append(subscription_info)
+                    if usage_info and usage_info != "Error":
+                        platform_parts.append(usage_info)
 
                 # 只有有有效的余额或订阅信息才显示
                 if platform_parts:
@@ -190,6 +201,20 @@ class StatusFormatter:
         else:
             return balance_text
 
+    def _format_balance_value(self, balance: float, currency: str = "USD", decimal_places: int = 2) -> str:
+        """格式化余额值，保留指定小数位数，最小值为0.01"""
+        # 处理负数，最小显示为-0.01
+        if balance < 0 and abs(balance) < 0.01:
+            balance = -0.01
+        # 处理正数，最小显示为0.01（但如果为0则显示0）
+        elif 0 < balance < 0.01:
+            balance = 0.01
+
+        if currency == "CNY":
+            return f"¥{balance:.{decimal_places}f}"
+        else:
+            return f"${balance:.{decimal_places}f}"
+
     def _format_gaccode_balance(self, balance_data: Dict[str, Any]) -> str:
         """格式化 GAC Code 余额信息"""
         try:
@@ -224,10 +249,8 @@ class StatusFormatter:
             balance = float(primary_balance.get("total_balance", 0))
             currency = primary_balance.get("currency", "USD")
 
-            if currency == "CNY":
-                balance_text = f"¥{balance:.2f}"
-            else:
-                balance_text = f"${balance:.2f}"
+            # 使用新的余额格式化函数，保留2位小数，最小值为0.01
+            balance_text = self._format_balance_value(balance, currency, 2)
 
             return self._format_balance_with_color(balance_text, balance, currency)
         except:
@@ -241,10 +264,8 @@ class StatusFormatter:
             balance = data.get("available_balance", 0)
             currency = "CNY"  # Kimi只支持人民币
 
-            if currency == "CNY":
-                balance_text = f"¥{balance:.2f}"
-            else:
-                balance_text = f"${balance:.2f}"
+            # 使用新的余额格式化函数，保留2位小数，最小值为0.01
+            balance_text = self._format_balance_value(balance, currency, 2)
 
             return self._format_balance_with_color(balance_text, balance, currency)
         except:
@@ -258,10 +279,8 @@ class StatusFormatter:
             balance = float(data.get("balance", 0))
             currency = "CNY"  # SiliconFlow只支持人民币
 
-            if currency == "CNY":
-                balance_text = f"¥{balance:.2f}"
-            else:
-                balance_text = f"${balance:.2f}"
+            # 使用新的余额格式化函数，保留2位小数，最小值为0.01
+            balance_text = self._format_balance_value(balance, currency, 2)
 
             return self._format_balance_with_color(balance_text, balance, currency)
         except:
@@ -282,10 +301,8 @@ class StatusFormatter:
             balance = data.get("availableBalance", 0)
             currency = "CNY"  # GLM只支持人民币
 
-            if currency == "CNY":
-                balance_text = f"¥{balance:.6f}"
-            else:
-                balance_text = f"${balance:.2f}"
+            # 使用新的余额格式化函数，保留2位小数，最小值为0.01（GLM改为2位小数）
+            balance_text = self._format_balance_value(balance, currency, 2)
 
             return self._format_balance_with_color(balance_text, balance, currency)
         except:
@@ -297,10 +314,8 @@ class StatusFormatter:
             balance = balance_data.get("balance", 0)
             currency = balance_data.get("currency", "USD")
 
-            if currency == "CNY":
-                balance_text = f"¥{balance:.2f}"
-            else:
-                balance_text = f"${balance:.2f}"
+            # 使用新的余额格式化函数，保留2位小数，最小值为0.01
+            balance_text = self._format_balance_value(balance, currency, 2)
 
             return self._format_balance_with_color(balance_text, balance, currency)
         except:
@@ -340,18 +355,26 @@ class StatusFormatter:
                         date_part = reset_time.split('T')[0]  # 2025-11-22
                         time_part = reset_time.split('T')[1].split('.')[0]  # 03:21:23
 
-                        # 格式化为月-日 时:分
+                        # 格式化时间
                         date_obj = datetime.strptime(date_part, "%Y-%m-%d")
                         time_obj = datetime.strptime(time_part, "%H:%M:%S")
 
-                        reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
-                        reset_display = f"[{reset_short}]"
+                        # 检查是否是今天
+                        today = datetime.now()
+                        if date_obj.date() == today.date():
+                            # 今天刷新，只显示时间 (HH:MM)
+                            reset_short = time_obj.strftime('%H:%M')
+                        else:
+                            # 其他日期显示月-日 时:分
+                            reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+
+                        reset_display = f"({reset_short})"  # 使用圆括号
                     else:
-                        reset_display = f"[{reset_time[:16]}]"  # 备用方案
+                        reset_display = f"({reset_time[:16]})"  # 备用方案
                 except Exception as e:
-                    reset_display = f"[{reset_time[:16]}]"
+                    reset_display = f"({reset_time[:16]})"
             else:
-                reset_display = "[NoReset]"
+                reset_display = "(NoReset)"
 
             if limit > 0:
                 balance_text = f"{remaining}/{limit}{reset_display}"
@@ -390,6 +413,7 @@ class StatusFormatter:
                 return None
 
             platform_id = platform_info.get("id", "").lower()
+            subscription_text = None
 
             # 根据不同平台格式化订阅信息
             if platform_id == "glm":
@@ -406,60 +430,60 @@ class StatusFormatter:
                                 break
 
                         if current_sub:
-                            product_name = current_sub.get("productName", "Unknown")
                             next_renew = current_sub.get("nextRenewTime", "")
                             if next_renew:
                                 try:
                                     from datetime import datetime
-                                    # 格式化到期时间 (MM-DD)
+                                    # 格式化到期时间 (MM-DD)，用中括号
                                     if len(next_renew) >= 10:
                                         date_obj = datetime.fromisoformat(next_renew[:10])
                                         renew_short = date_obj.strftime("%m-%d")
-                                        subscription_text = f"Sub:{product_name}({renew_short})"
+                                        subscription_text = f"[{renew_short}]"
                                     else:
-                                        subscription_text = f"Sub:{product_name}"
+                                        subscription_text = None  # 无有效时间，不显示
                                 except:
-                                    subscription_text = f"Sub:{product_name}"
+                                    subscription_text = None  # 解析失败，不显示
                             else:
-                                subscription_text = f"Sub:{product_name}"
+                                subscription_text = None  # 无时间信息，不显示
                         else:
-                            subscription_text = "Sub:NoActive"
+                            subscription_text = None  # 无有效订阅，不显示
                     else:
-                        subscription_text = "Sub:NoData"
+                        subscription_text = None  # 无数据，不显示
                 else:
-                    # 兼容旧的配置格式
-                    plan = subscription_data.get("plan", "Unknown")
-                    model = subscription_data.get("model", "GLM")
-                    subscription_text = f"Sub:{plan}({model})"
+                    # 兼容旧的配置格式，但是如果没有到期时间就不显示
+                    subscription_text = None  # 旧格式省略显示
             elif platform_id == "deepseek":
-                plan = subscription_data.get("plan", "Free")
-                subscription_text = f"Sub:{plan}"
+                # DeepSeek 没有订阅时间信息，省略显示
+                subscription_text = None
             elif platform_id == "kimi":
-                plan = subscription_data.get("plan", "Free")
                 expiry = subscription_data.get("expiry", "")
                 if expiry:
-                    # 格式化日期显示 (MM-DD)
+                    # 格式化日期显示 (MM-DD)，用中括号
                     try:
                         from datetime import datetime
                         if len(expiry) >= 10:  # YYYY-MM-DD format
                             date_obj = datetime.fromisoformat(expiry[:10])
                             expiry_short = date_obj.strftime("%m-%d")
-                            subscription_text = f"Sub:{plan}({expiry_short})"
+                            subscription_text = f"[{expiry_short}]"
                         else:
-                            subscription_text = f"Sub:{plan}"
+                            subscription_text = None  # 格式不正确，不显示
                     except:
-                        subscription_text = f"Sub:{plan}"
+                        subscription_text = None  # 解析失败，不显示
                 else:
-                    subscription_text = f"Sub:{plan}"
+                    subscription_text = None  # 无到期时间，不显示
             else:
-                plan = subscription_data.get("plan", "Unknown")
-                subscription_text = f"Sub:{plan}"
+                # 其他平台如果没有具体时间信息就不显示
+                subscription_text = None
 
-            # 添加颜色
-            if self.use_colors:
-                return f"{self.colors['subscription']}{subscription_text}{self.colors['reset']}"
+            # 只有有效的订阅信息才显示
+            if subscription_text:
+                # 添加颜色
+                if self.use_colors:
+                    return f"{self.colors['subscription']}{subscription_text}{self.colors['reset']}"
+                else:
+                    return subscription_text
             else:
-                return subscription_text
+                return None
 
         except Exception as e:
             self.logger.warning(f"Failed to format subscription: {e}")

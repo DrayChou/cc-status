@@ -275,10 +275,12 @@ class GLMPlatform(BasePlatform):
                 if currency == "CNY":
                     if balance < 0:  # 负余额 - 红色
                         color = "\033[91m"
+                    elif balance <= 1:
+                        color = "\033[91m"  # 红色 - 余额很少
                     elif balance <= 10:
-                        color = "\033[93m"  # 黄色
+                        color = "\033[93m"  # 黄色 - 余额较少
                     else:
-                        color = "\033[92m"  # 绿色
+                        color = "\033[92m"  # 绿色 - 余额充足
                 else:
                     if balance <= 5:
                         color = "\033[91m"  # 红色
@@ -289,13 +291,22 @@ class GLMPlatform(BasePlatform):
 
                 reset = "\033[0m"
 
-                # 格式化余额显示（保留6位小数）
-                if currency == "CNY":
-                    balance_display = f"{color}{balance:.6f}CNY{reset}"
+                # 格式化余额显示（保留2位小数，最小值为0.01）
+                # 处理负数，最小显示为-0.01
+                if balance < 0 and abs(balance) < 0.01:
+                    display_balance = -0.01
+                # 处理正数，最小显示为0.01（但如果为0则显示0）
+                elif 0 < balance < 0.01:
+                    display_balance = 0.01
                 else:
-                    balance_display = f"{color}${balance:.2f}{reset}"
+                    display_balance = balance
 
-            # 处理订阅部分
+                if currency == "CNY":
+                    balance_display = f"{color}{display_balance:.2f}CNY{reset}"
+                else:
+                    balance_display = f"{color}${display_balance:.2f}{reset}"
+
+            # 处理订阅部分 - 使用中括号显示到期时间
             subscription_display = ""
             if subscription_data and isinstance(subscription_data, dict) and "data" in subscription_data:
                 subscriptions = subscription_data.get("data", [])
@@ -308,28 +319,27 @@ class GLMPlatform(BasePlatform):
                             break
 
                     if current_sub:
-                        product_name = current_sub.get("productName", "Unknown")
                         next_renew = current_sub.get("nextRenewTime", "")
                         if next_renew:
                             try:
                                 from datetime import datetime
-                                # 格式化到期时间 (MM-DD)
+                                # 格式化到期时间 (MM-DD)，用中括号
                                 if len(next_renew) >= 10:
                                     date_obj = datetime.fromisoformat(next_renew[:10])
                                     renew_short = date_obj.strftime("%m-%d")
-                                    subscription_display = f" Sub:{renew_short}"
+                                    subscription_display = f" [{renew_short}]"
                                 else:
-                                    subscription_display = f" Sub:{next_renew[:5]}"
+                                    subscription_display = f" [{next_renew[:5]}]"
                             except:
-                                subscription_display = f" Sub:{next_renew[:5]}"
+                                subscription_display = f" [{next_renew[:5]}]"
                         else:
-                            subscription_display = " Sub:NoRenew"
+                            subscription_display = ""  # 无时间信息，不显示
                     else:
-                        subscription_display = " Sub:NoActive"
+                        subscription_display = ""  # 无有效订阅，不显示
                 else:
-                    subscription_display = " Sub:NoData"
+                    subscription_display = ""  # 无数据，不显示
             else:
-                subscription_display = " Sub:NoInfo"
+                subscription_display = ""  # 无信息，不显示
 
             # 组合最终显示（去掉平台名称前缀，由formatter统一添加）
             final_display = f"{balance_display}{subscription_display}"

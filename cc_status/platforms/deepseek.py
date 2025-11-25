@@ -183,11 +183,21 @@ class DeepSeekPlatform(BasePlatform):
                 color_name = "green"
             reset = "\033[0m"
 
+            # 格式化余额显示（保留2位小数，最小值为0.01）
+            # 处理负数，最小显示为-0.01
+            if total_balance < 0 and abs(total_balance) < 0.01:
+                display_balance = -0.01
+            # 处理正数，最小显示为0.01（但如果为0则显示0）
+            elif 0 < total_balance < 0.01:
+                display_balance = 0.01
+            else:
+                display_balance = total_balance
+
             # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"{color}{total_balance:.2f}CNY{reset}"
+                balance_str = f"{color}{display_balance:.2f}CNY{reset}"
             else:
-                balance_str = f"{color}${total_balance:.2f}{reset}"
+                balance_str = f"{color}${display_balance:.2f}{reset}"
 
             # 如果有多个余额信息，显示详细信息
             if len(balance_infos) > 1:
@@ -196,10 +206,18 @@ class DeepSeekPlatform(BasePlatform):
                     balance = info.get("total_balance", 0)
                     curr = info.get("currency", "USD")
                     if balance > 0:
-                        if curr == "CNY":
-                            details.append(f"{balance:.2f}CNY")
+                        # 对详细信息也应用最小值逻辑
+                        if balance < 0 and abs(balance) < 0.01:
+                            display_detail_balance = -0.01
+                        elif 0 < balance < 0.01:
+                            display_detail_balance = 0.01
                         else:
-                            details.append(f"${balance:.2f}")
+                            display_detail_balance = balance
+
+                        if curr == "CNY":
+                            details.append(f"{display_detail_balance:.2f}CNY")
+                        else:
+                            details.append(f"${display_detail_balance:.2f}")
                 if details:
                     balance_str += f" ({', '.join(details)})"
 

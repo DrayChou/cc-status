@@ -165,11 +165,21 @@ class KimiPlatform(BasePlatform):
 
             reset = "\033[0m"
 
+            # 格式化余额显示（保留2位小数，最小值为0.01）
+            # 处理负数，最小显示为-0.01
+            if balance < 0 and abs(balance) < 0.01:
+                display_balance = -0.01
+            # 处理正数，最小显示为0.01（但如果为0则显示0）
+            elif 0 < balance < 0.01:
+                display_balance = 0.01
+            else:
+                display_balance = balance
+
             # 格式化显示（去掉平台名称前缀，由formatter统一添加）
             if currency == "CNY":
-                balance_str = f"{color}{balance:.2f}CNY{reset}"
+                balance_str = f"{color}{display_balance:.2f}CNY{reset}"
             else:
-                balance_str = f"{color}${balance:.2f}{reset}"
+                balance_str = f"{color}${display_balance:.2f}{reset}"
 
             self.logger.debug(
                 "Kimi balance formatting completed",
@@ -208,19 +218,19 @@ class KimiPlatform(BasePlatform):
             color = "\033[94m"  # 蓝色
 
             if expiry:
-                # 格式化日期显示 (MM-DD)
+                # 格式化到期时间 (MM-DD)，用中括号显示
                 try:
                     from datetime import datetime
                     if len(expiry) >= 10:  # YYYY-MM-DD format
                         date_obj = datetime.fromisoformat(expiry[:10])
                         expiry_short = date_obj.strftime("%m-%d")
-                        subscription_text = f"Sub:{plan}({expiry_short})"
+                        subscription_text = f"[{expiry_short}]"
                     else:
-                        subscription_text = f"Sub:{plan}"
+                        subscription_text = ""  # 格式不正确，不显示
                 except:
-                    subscription_text = f"Sub:{plan}"
+                    subscription_text = ""  # 解析失败，不显示
             else:
-                subscription_text = f"Sub:{plan}"
+                subscription_text = ""  # 无到期时间，不显示
 
             return f"{color}{subscription_text}{reset}"
         except Exception as e:
