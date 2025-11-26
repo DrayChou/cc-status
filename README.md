@@ -98,12 +98,17 @@ python statusline.py --init-config
 
 ### 多平台配置示例
 
+> **💡 Note**: Minimaxi需要配置两个不同的token：
+> - `auth_token`: 用于调用大模型API（接口调用）
+> - `login_token`: 用于查询余额/用量信息（状态栏显示）
+> 两个token作用不同，缺一不可。
+
 支持的平台类型：
 - **GAC Code**: `login_token` (Bearer)
 - **DeepSeek**: `api_key` (Bearer)
 - **Kimi**: `auth_token` (Bearer)
 - **SiliconFlow**: `api_key` (Bearer)
-- **Minimaxi**: `auth_token` 或 `login_token` + `group_id` (Bearer + URL参数)
+- **Minimaxi**: `login_token` + `group_id` (用于余额/用量查询，Bearer + URL参数)
 - **GLM**: `login_token` (完整JWT，非Bearer)
 - **KFC**: `login_token` 或 `balance_token` (Bearer)
 
@@ -114,7 +119,8 @@ python statusline.py --init-config
     "minimaxi": {
       "name": "Minimaxi",
       "api_base_url": "https://api.minimaxi.com/anthropic",
-      "auth_token": "your-jwt-token-here",
+      "auth_token": "your-api-token-here",      // 用于调用大模型API
+      "login_token": "your-jwt-token-here",    // 用于查询余额/用量信息
       "group_id": "your-group-id-here",
       "model": "MiniMax-M2",
       "enabled": true
@@ -328,21 +334,26 @@ v2.1+ 版本增强：
 - 检查token字段是否存在
 - 验证为字符串类型
 - 非空且包含有效内容
-- 支持多token类型：`login_token`、`auth_token`、`api_key`、`balance_token`
+- 不同平台的token用途不同：
+  - `login_token` (DeepSeek、Kimi、KFC、GLM) - 平台登录/状态查询
+  - `auth_token` (DeepSeek、Kimi) - API调用认证
+  - `api_key` (SiliconFlow) - API密钥
+  - `balance_token` (KFC) - 余额查询专用
+  - `login_token` + `group_id` (Minimaxi) - 状态查询需要两个参数
 
 示例（此配置不会显示minimaxi）：
 ```json
 {
   "minimaxi": {
-    "auth_token": "",     // 空值，自动隐藏
-    "enabled": true       // 仍为true，但因为没有有效token而不显示
+    "login_token": "",     // 缺少login_token，无法查询余额信息
+    "enabled": true       // 仍为true，但因为没有有效login_token而不显示余额
   }
 }
 ```
 
 日志中可查看被跳过的平台（DEBUG级别）：
 ```
-Minimaxi auth_token/login_token not configured, skipping balance query
+Minimaxi login_token not configured, skipping balance query
 ```
 
 ## 🔧 故障排除
