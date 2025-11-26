@@ -103,7 +103,7 @@ python statusline.py --init-config
 - **DeepSeek**: `api_key` (Bearer)
 - **Kimi**: `auth_token` (Bearer)
 - **SiliconFlow**: `api_key` (Bearer)
-- **Minimaxi**: `login_token` + `group_id` (Bearer + URL参数)
+- **Minimaxi**: `auth_token` 或 `login_token` + `group_id` (Bearer + URL参数)
 - **GLM**: `login_token` (完整JWT，非Bearer)
 - **KFC**: `login_token` 或 `balance_token` (Bearer)
 
@@ -114,7 +114,7 @@ python statusline.py --init-config
     "minimaxi": {
       "name": "Minimaxi",
       "api_base_url": "https://api.minimaxi.com/anthropic",
-      "login_token": "your-jwt-token-here",
+      "auth_token": "your-jwt-token-here",
       "group_id": "your-group-id-here",
       "model": "MiniMax-M2",
       "enabled": true
@@ -334,7 +334,7 @@ v2.1+ 版本增强：
 ```json
 {
   "minimaxi": {
-    "login_token": "",     // 空值，自动隐藏
+    "auth_token": "",     // 空值，自动隐藏
     "enabled": true       // 仍为true，但因为没有有效token而不显示
   }
 }
@@ -342,7 +342,7 @@ v2.1+ 版本增强：
 
 日志中可查看被跳过的平台（DEBUG级别）：
 ```
-Minimaxi login_token not configured, skipping balance query
+Minimaxi auth_token/login_token not configured, skipping balance query
 ```
 
 ## 🔧 故障排除
