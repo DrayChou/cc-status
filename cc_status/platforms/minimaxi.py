@@ -373,7 +373,7 @@ class MinimaxiPlatform(BasePlatform):
             end_time = primary_model.get("end_time", 0)
 
             # 计算剩余额度
-            remaining_count = total_count - used_count
+            remaining_count = used_count
             usage_percentage = (used_count / total_count * 100) if total_count > 0 else 0
 
             # 计算重置时间（从end_time时间戳转换为可读格式）
