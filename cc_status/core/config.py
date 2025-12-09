@@ -75,6 +75,7 @@ class ConfigManager:
             "platforms": {
                 "gaccode": {
                     "name": "GAC Code",
+                    "platform_type": "gaccode",
                     "api_base_url": "https://relay05.gaccode.com/claudecode",
                     "login_token": "",
                     "model": "claude-3-5-sonnet-20241022",
@@ -82,6 +83,7 @@ class ConfigManager:
                 },
                 "deepseek": {
                     "name": "DeepSeek",
+                    "platform_type": "deepseek",
                     "api_base_url": "https://api.deepseek.com/anthropic",
                     "api_key": "",
                     "model": "deepseek-chat",
@@ -89,6 +91,7 @@ class ConfigManager:
                 },
                 "kimi": {
                     "name": "Kimi",
+                    "platform_type": "kimi",
                     "api_base_url": "https://api.moonshot.cn/anthropic",
                     "auth_token": "",
                     "model": "moonshot-v1-8k",
@@ -96,9 +99,34 @@ class ConfigManager:
                 },
                 "siliconflow": {
                     "name": "SiliconFlow",
+                    "platform_type": "siliconflow",
                     "api_base_url": "https://api.siliconflow.cn/",
                     "api_key": "",
                     "model": "deepseek-ai/DeepSeek-V3",
+                    "enabled": True
+                },
+                "glm": {
+                    "name": "GLM",
+                    "platform_type": "glm",
+                    "api_base_url": "https://open.bigmodel.cn/api/anthropic",
+                    "auth_token": "",
+                    "model": "glm-4.6",
+                    "enabled": True
+                },
+                "kfc": {
+                    "name": "Kimi For Coding",
+                    "platform_type": "kfc",
+                    "api_base_url": "https://api.kimi.com/coding/",
+                    "auth_token": "",
+                    "model": "kimi-for-coding",
+                    "enabled": True
+                },
+                "minimaxi": {
+                    "name": "Minimaxi",
+                    "platform_type": "minimaxi",
+                    "api_base_url": "https://api.minimaxi.com/anthropic",
+                    "auth_token": "",
+                    "model": "MiniMax-M2",
                     "enabled": True
                 }
             },
@@ -108,7 +136,12 @@ class ConfigManager:
                 "dp": "deepseek",
                 "ds": "deepseek",
                 "sc": "siliconflow",
-                "sf": "siliconflow"
+                "sf": "siliconflow",
+                "km": "kimi",
+                "glm": "glm",
+                "kfc": "kfc",
+                "minimaxi": "minimaxi",
+                "mm": "minimaxi"
             }
         }
 

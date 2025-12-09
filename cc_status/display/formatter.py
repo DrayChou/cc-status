@@ -127,13 +127,15 @@ class StatusFormatter:
                 balance_info = self._format_single_platform_balance(platform_info)
                 subscription_info = self._format_single_platform_subscription(platform_info)
                 usage_info = self._format_single_platform_usage(platform_info)
+                usage_data = platform_info.get("usage", {})
 
                 # 构建平台信息，过滤掉Error和None值
                 platform_parts = []
 
                 # 特殊处理Minimaxi：如果有usage_data（已包含订阅信息），则不显示balance_info
-                if platform_id == "minimaxi":
-                    if usage_info and usage_info != "Error":
+                # 注意：需要检查所有 minimaxi 实例，包括 minimaxi-user1 等
+                if platform_id.startswith("minimaxi"):
+                    if usage_data and usage_info and usage_info != "Error":
                         platform_parts.append(usage_info)
                     # 如果没有usage_data但有balance_data，则显示balance_data
                     elif balance_info and balance_info != "Error":

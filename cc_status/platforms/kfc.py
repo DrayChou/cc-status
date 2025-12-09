@@ -64,94 +64,92 @@ class KfcPlatform(BasePlatform):
         return False
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch balance data from KFC API using the provided curl command pattern"""
+        """Fetch balance data from KFC API using auth_token"""
         try:
-            # 验证balance_token或login_token是否配置
-            balance_token = self.config.get("balance_token") or self.config.get("login_token")
-            if not balance_token or not isinstance(balance_token, str) or len(balance_token.strip()) == 0:
-                self.logger.debug("KFC balance_token/login_token not configured, skipping balance query")
+            # 只使用auth_token（KFC的API Key）
+            auth_token = self.config.get("auth_token")
+
+            # 验证是否有可用的token
+            if not auth_token:
+                self.logger.debug(
+                    "KFC auth_token not configured, skipping balance query"
+                )
                 return None
 
             self.logger.debug(
                 "Starting KFC balance fetch",
-                {"token_length": len(balance_token) if balance_token else 0},
+                {
+                    "has_auth_token": bool(auth_token),
+                    "auth_token_length": len(auth_token) if auth_token else 0,
+                },
             )
 
-            # 使用你提供的API端点进行余额查询
-            balance_data = self._make_kfc_request()
+            # 使用auth_token调用Kimi标准API
+            self.logger.debug("Attempting balance query with auth_token")
+            balance_data = self._make_kfc_request(auth_token)
 
             if balance_data:
                 self.logger.info(
-                    "KFC balance data fetched successfully",
+                    "KFC balance data fetched successfully with auth_token",
                     {
                         "data_keys": list(balance_data.keys()),
                         "data_type": type(balance_data).__name__,
-                        "has_usages": "usages" in balance_data,
+                        "has_balance_data": "data" in balance_data,
                     },
                 )
                 return balance_data
             else:
-                self.logger.warning(
-                    "KFC balance API returned None",
-                    {"possible_cause": "API request failed or returned empty data"},
-                )
-                return None
+                self.logger.warning("KFC auth_token query failed")
+
+            return None
 
         except Exception as e:
             self.logger.error(f"KFC balance fetch failed: {e}")
             return None
 
-    def _make_kfc_request(self) -> Optional[Dict[str, Any]]:
-        """Make KFC-specific API request"""
+    def _make_kfc_request(self, token: str) -> Optional[Dict[str, Any]]:
+        """Make KFC usage query using KFC-specific API with auth_token"""
         import requests
 
-        # KFC需要单独的balance_token用于余额查询
-        balance_token = self.config.get("balance_token") or self.config.get("login_token")
-        if not balance_token:
-            self.logger.warning("No balance/login token available for KFC")
-            return None
+        # KFC专用API端点 - 查询使用量
+        url = "https://www.kimi.com/coding/kimi.billing.v1.BillingService/GetUsage"
 
-        # KFC API端点
-        url = "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
-
-        # 请求头 - 基于你提供的curl命令
+        # Request headers
         headers = {
-            'accept': '*/*',
-            'accept-language': 'zh-CN,zh-TW;q=0.9,zh-HK;q=0.8,zh;q=0.7,en-GB;q=0.6,en-US;q=0.5,en;q=0.4,ja;q=0.3,fr-FR;q=0.2,fr;q=0.1',
-            'authorization': f'Bearer {balance_token}',
-            'cache-control': 'no-cache',
-            'connect-protocol-version': '1',
-            'content-type': 'application/json',
-            'origin': 'https://www.kimi.com',
-            'pragma': 'no-cache',
-            'priority': 'u=1, i',
-            'r-timezone': 'Asia/Shanghai',
-            'referer': 'https://www.kimi.com/membership/pricing?from=upgrade_nav',
-            'sec-ch-ua': '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0',
-            'x-language': 'zh-CN',
-            'x-msh-platform': 'web',
+            'Content-Type': 'application/json',
+            'User-Agent': (
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/142.0.0.0 Safari/537.36'
+            ),
         }
 
-        # 请求数据
+        # Request data - 使用auth_token作为credential key
         data = {
-            "scope": ["FEATURE_CODING"]
+            "credential": {
+                "key": token,
+                "scope": "FEATURE_CODING"
+            }
         }
 
         try:
             self.logger.debug(f"Making KFC API request to: {url}")
-            self.logger.debug(f"Using balance token (first 10 chars): {balance_token[:10]}...")
+            self.logger.debug(
+                f"Using auth_token (first 10 chars): {token[:10]}..."
+            )
             response = requests.post(url, headers=headers, json=data, timeout=10)
 
+            self.logger.debug(f"KFC API response status: {response.status_code}")
+
             if response.status_code == 200:
-                return response.json()
+                json_data = response.json()
+                self.logger.debug(f"KFC API response: {json_data}")
+                return json_data
             else:
-                self.logger.warning(f"KFC API request failed with status {response.status_code}: {response.text}")
+                self.logger.warning(
+                    f"KFC API request failed with status "
+                    f"{response.status_code}: {response.text}"
+                )
                 return None
 
         except Exception as e:
@@ -168,7 +166,7 @@ class KfcPlatform(BasePlatform):
         # 处理空数据情况
         if balance_data is None:
             self.logger.info("No balance data available for display")
-            return "KFC:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting KFC balance formatting",
@@ -179,27 +177,30 @@ class KfcPlatform(BasePlatform):
         )
 
         try:
-            # KFC API 返回 usages 数组
-            usages = balance_data.get("usages", [])
-            if not usages:
-                self.logger.warning("No usages data found in KFC response")
-                return "KFC:\033[91mNoUsage\033[0m"
+            # KFC API 返回直接的 usage 对象（不是usages数组）
+            usage = balance_data.get("usage", {})
+            if not usage:
+                self.logger.warning("No usage data found in KFC response")
+                return "\033[91mNoUsage\033[0m"
 
-            # 获取FEATURE_CODING的使用情况
-            coding_usage = None
-            for usage in usages:
-                if usage.get("scope") == "FEATURE_CODING":
-                    coding_usage = usage.get("detail", {})
-                    break
+            # 解析使用数据
+            limit_str = usage.get("limit", "0")
+            used_str = usage.get("used", "0")
+            remaining_str = usage.get("remaining", "0")
+            reset_time = usage.get("resetTime", "")  # 获取重置时间
 
-            if not coding_usage:
-                self.logger.warning("No FEATURE_CODING usage found")
-                return "KFC:\033[91mNoCodingUsage\033[0m"
-
-            limit = int(coding_usage.get("limit", 0))
-            used = int(coding_usage.get("used", 0))
-            remaining = int(coding_usage.get("remaining", 0))
-            reset_time = coding_usage.get("resetTime", "")  # 获取重置时间
+            # 转换为整数
+            try:
+                limit = int(limit_str)
+                used = int(used_str)
+                remaining = int(remaining_str)
+            except (ValueError, TypeError):
+                self.logger.warning(
+                    f"Failed to parse usage numbers: "
+                    f"limit={limit_str}, used={used_str}, "
+                    f"remaining={remaining_str}"
+                )
+                return "\033[91mParseError\033[0m"
 
             self.logger.debug(
                 "KFC usage data structure",
@@ -219,7 +220,9 @@ class KfcPlatform(BasePlatform):
                     if 'T' in reset_time:
                         # 提取日期和时间部分
                         date_part = reset_time.split('T')[0]  # 2025-11-22
-                        time_part = reset_time.split('T')[1].split('.')[0]  # 03:21:23
+                        time_part = (
+                            reset_time.split('T')[1].split('.')[0]
+                        )  # 03:21:23
 
                         # 格式化时间
                         date_obj = datetime.strptime(date_part, "%Y-%m-%d")
@@ -232,7 +235,10 @@ class KfcPlatform(BasePlatform):
                             reset_short = time_obj.strftime('%H:%M')
                         else:
                             # 其他日期显示月-日 时:分
-                            reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+                            reset_short = (
+                                f"{date_obj.strftime('%m-%d')} "
+                                f"{time_obj.strftime('%H:%M')}"
+                            )
 
                         reset_display = f"({reset_short})"  # 使用圆括号
                     else:
@@ -273,21 +279,23 @@ class KfcPlatform(BasePlatform):
             return balance_str
         except Exception as e:
             self.logger.error(f"KFC balance formatting failed: {e}")
-            return f"KFC:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"
 
-    def format_subscription_display(self, subscription_data: Dict[str, Any]) -> str:
+    def format_subscription_display(
+        self, subscription_data: Dict[str, Any]
+    ) -> str:
         """Format KFC subscription for display"""
         if subscription_data is None:
             self.logger.info("No subscription data available for display")
-            return "KFC.Sub:\033[94mUsageBased\033[0m"
+            return "\033[94mUsageBased\033[0m"
 
         try:
             # KFC是按使用量计费，显示使用状态
-            reset_color = "\033[0m"
             color = "\033[94m"  # 蓝色
+            reset = "\033[0m"
 
             subscription_text = "Coding.Usage"
             return f"{color}{subscription_text}{reset}"
         except Exception as e:
             self.logger.error(f"KFC subscription formatting failed: {e}")
-            return f"KFC.Sub:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"

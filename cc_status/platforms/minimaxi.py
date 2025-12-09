@@ -4,10 +4,10 @@
 Minimaxi platform implementation
 """
 
+import json
 from typing import Dict, Any, Optional
 from .base import BasePlatform
 from ..utils.logger import get_logger
-import requests
 
 
 class MinimaxiPlatform(BasePlatform):
@@ -62,12 +62,11 @@ class MinimaxiPlatform(BasePlatform):
         self.logger.debug("Minimaxi platform not detected")
         return False
 
-    def make_request(self, endpoint: str) -> Optional[Dict[str, Any]]:
-        """重写make_request方法，使用login_token进行认证并添加必需参数"""
-        login_token = self.config.get("login_token")
-        if not login_token:
-            self.logger.warning("No login_token available for Minimaxi request")
-            return None
+    def _make_minimaxi_request_with_auth_token(
+        self, endpoint: str, auth_token: str
+    ) -> Optional[Dict[str, Any]]:
+        """Make Minimaxi API request with auth_token (fallback)"""
+        import requests
 
         # 构建完整的URL
         if hasattr(self, 'api_base'):
@@ -79,42 +78,40 @@ class MinimaxiPlatform(BasePlatform):
             self.logger.error("No API base URL configured for Minimaxi")
             return None
 
-        # 获取必需的参数
-        group_id = self.config.get("group_id") or self.config.get("GroupId")
-        if not group_id:
-            self.logger.error("No group_id configured for Minimaxi")
-            return None
-
-        # 构建带参数的完整URL
+        # 构建带参数的完整URL（auth_token模式下可能不需要group_id）
         url = f"{api_base}{endpoint}"
-        params = {
-            "biz_line": 2,
-            "cycle_type": 1,
-            "resource_package_type": 7,
-            "GroupId": group_id
-        }
 
-        # 请求头 - 基于真实浏览器请求
+        # 对于auth_token，尝试不带group_id参数（某些API可能支持）
+        params = {}
+
+        # 请求头 - 使用auth_token
         headers = {
             'accept': 'application/json, text/plain, */*',
             'accept-language': 'en,zh-CN;q=0.9,zh-TW;q=0.7,zh;q=0.6,en-US;q=0.5',
-            'authorization': f'Bearer {login_token}',
+            'authorization': f'Bearer {auth_token}',
             'dnt': '1',
             'origin': 'https://platform.minimaxi.com',
             'priority': 'u=1, i',
             'referer': 'https://platform.minimaxi.com/',
-            'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+            'sec-ch-ua': (
+                '"Chromium";v="142", "Google Chrome";v="142", '
+                '"Not_A Brand";v="99"'
+            ),
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"macOS"',
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-site',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+            'user-agent': (
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/142.0.0.0 Safari/537.36'
+            ),
         }
 
         try:
             self.logger.debug(f"Making Minimaxi API request to: {url}")
-            self.logger.debug(f"With params: {params}")
+            self.logger.debug(f"With auth_token (first 10 chars): {auth_token[:10]}...")
             response = requests.get(url, headers=headers, params=params, timeout=10)
 
             self.logger.debug(f"Minimaxi API response status: {response.status_code}")
@@ -130,11 +127,16 @@ class MinimaxiPlatform(BasePlatform):
                     self.logger.debug(f"Minimaxi API response: {json_data}")
                     return json_data
                 except json.JSONDecodeError as e:
-                    self.logger.error(f"Minimaxi API response is not valid JSON: {e}")
+                    self.logger.error(
+                        f"Minimaxi API response is not valid JSON: {e}"
+                    )
                     self.logger.error(f"Response text: {response.text}")
                     return None
             else:
-                self.logger.warning(f"Minimaxi API request failed with status {response.status_code}: {response.text}")
+                self.logger.warning(
+                    f"Minimaxi API request failed with status "
+                    f"{response.status_code}: {response.text}"
+                )
                 return None
 
         except Exception as e:
@@ -142,27 +144,33 @@ class MinimaxiPlatform(BasePlatform):
             return None
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch subscription data from Minimaxi API using the provided curl command pattern"""
+        """Fetch subscription data from Minimaxi API using auth_token"""
         try:
-            # 验证login_token是否配置
-            login_token = self.config.get("login_token")
-            if not login_token or not isinstance(login_token, str) or len(login_token.strip()) == 0:
-                self.logger.debug("Minimaxi login_token not configured, skipping balance query")
-                return None
+            # Use only auth_token (Minimax API Key)
+            auth_token = self.config.get("auth_token")
 
-            # 验证group_id是否配置
-            group_id = self.config.get("group_id") or self.config.get("GroupId")
-            if not group_id:
-                self.logger.warning("Minimaxi group_id not configured")
+            # Check if auth_token is available
+            if not auth_token:
+                self.logger.debug(
+                    "Minimaxi auth_token not configured, "
+                    "skipping balance query"
+                )
                 return None
 
             self.logger.debug(
                 "Starting Minimaxi subscription fetch",
-                {"token_length": len(login_token) if login_token else 0},
+                {
+                    "has_auth_token": bool(auth_token),
+                    "auth_token_length": len(auth_token) if auth_token else 0,
+                },
             )
 
-            # 使用Minimaxi的订阅查询端点
-            subscription_data = self.make_request("/openplatform/charge/combo/cycle_audio_resource_package")
+            # Use auth_token to call Minimax-specific API
+            self.logger.debug("Attempting balance query with auth_token")
+            subscription_data = self._make_minimaxi_request_with_auth_token(
+                "/openplatform/charge/combo/cycle_audio_resource_package",
+                auth_token
+            )
 
             if subscription_data:
                 self.logger.info(
@@ -175,11 +183,9 @@ class MinimaxiPlatform(BasePlatform):
                 )
                 return subscription_data
             else:
-                self.logger.warning(
-                    "Minimaxi subscription API returned None",
-                    {"possible_cause": "API request failed or returned empty data"},
-                )
-                return None
+                self.logger.warning("Minimaxi auth_token query failed")
+
+            return None
 
         except Exception as e:
             self.logger.error(f"Minimaxi subscription fetch failed: {e}")
@@ -195,7 +201,7 @@ class MinimaxiPlatform(BasePlatform):
         # 处理空数据情况
         if subscription_data is None:
             self.logger.info("No subscription data available for display")
-            return "Minimaxi:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting Minimaxi subscription formatting",
@@ -210,13 +216,13 @@ class MinimaxiPlatform(BasePlatform):
             current_subscribe = subscription_data.get("current_subscribe", {})
             if not current_subscribe:
                 self.logger.warning("Minimaxi subscription data missing 'current_subscribe' field")
-                return "Minimaxi:\033[91mNoSub\033[0m"
+                return "\033[91mNoSub\033[0m"
 
             # 获取订阅结束时间
             end_time = current_subscribe.get("current_subscribe_end_time", "")
             if not end_time:
                 self.logger.warning("Minimaxi subscription data missing 'current_subscribe_end_time' field")
-                return "Minimaxi:\033[91mNoDate\033[0m"
+                return "\033[91mNoDate\033[0m"
 
             self.logger.debug(
                 "Minimaxi subscription data structure",
@@ -265,17 +271,17 @@ class MinimaxiPlatform(BasePlatform):
             except Exception as e:
                 self.logger.error(f"Failed to parse Minimaxi date format: {e}")
                 # 如果解析失败，直接显示原始日期（取前5个字符）
-                return f"Minimaxi:{end_time[:5]}"
+                return f"{end_time[:5]}"
 
         except Exception as e:
             self.logger.error(f"Minimaxi subscription formatting failed: {e}")
-            return f"Minimaxi:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"
 
     def format_subscription_display(self, subscription_data: Dict[str, Any]) -> str:
         """Format Minimaxi subscription details for display"""
         if subscription_data is None:
             self.logger.info("No subscription data available for display")
-            return "Minimaxi.Sub:\033[94mPackage\033[0m"
+            return "\033[94mPackage\033[0m"
 
         try:
             # Minimaxi使用套餐模式
@@ -283,33 +289,30 @@ class MinimaxiPlatform(BasePlatform):
             color = "\033[94m"  # 蓝色
 
             subscription_text = "Package.Subscription"
-            return f"{color}{subscription_text}{reset}"
+            return f"{color}{subscription_text}{reset_color}"
         except Exception as e:
             self.logger.error(f"Minimaxi subscription details formatting failed: {e}")
-            return f"Minimaxi.Sub:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"
 
     def fetch_usage_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch usage data from Minimaxi API"""
+        """Fetch usage data from Minimaxi API using auth_token"""
         try:
-            # 验证login_token是否配置
-            login_token = self.config.get("login_token")
-            if not login_token or not isinstance(login_token, str) or len(login_token.strip()) == 0:
-                self.logger.debug("Minimaxi login_token not configured, skipping usage query")
-                return None
-
-            # 验证group_id是否配置
-            group_id = self.config.get("group_id") or self.config.get("GroupId")
-            if not group_id:
-                self.logger.warning("Minimaxi group_id not configured")
+            # 只使用auth_token
+            auth_token = self.config.get("auth_token")
+            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
+                self.logger.debug("Minimaxi auth_token not configured, skipping usage query")
                 return None
 
             self.logger.debug(
                 "Starting Minimaxi usage fetch",
-                {"token_length": len(login_token) if login_token else 0},
+                {"token_length": len(auth_token) if auth_token else 0},
             )
 
-            # 使用Minimaxi的用量查询端点
-            usage_data = self.make_request("/openplatform/coding_plan/remains")
+            # 使用auth_token查询用量数据
+            usage_data = self._make_minimaxi_request_with_auth_token(
+                "/openplatform/coding_plan/remains",
+                auth_token
+            )
 
             if usage_data:
                 self.logger.info(
@@ -338,7 +341,7 @@ class MinimaxiPlatform(BasePlatform):
         # 处理空数据情况
         if usage_data is None:
             self.logger.info("No usage data available for display")
-            return "Minimaxi.Usage:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting Minimaxi combined usage formatting",
@@ -354,13 +357,13 @@ class MinimaxiPlatform(BasePlatform):
             if base_resp.get("status_code") != 0:
                 error_msg = base_resp.get("status_msg", "Unknown error")
                 self.logger.warning(f"Minimaxi usage API returned error: {error_msg}")
-                return f"Minimaxi.Usage:\033[91m{error_msg}\033[0m"
+                return f"\033[91m{error_msg}\033[0m"
 
             # 提取模型剩余用量数据
             model_remains = usage_data.get("model_remains", [])
             if not model_remains:
                 self.logger.warning("Minimaxi usage data missing 'model_remains' field")
-                return "Minimaxi.Usage:\033[91mNoUsage\033[0m"
+                return "\033[91mNoUsage\033[0m"
 
             # 取第一个模型的数据（通常只有一个）
             primary_model = model_remains[0]
@@ -460,4 +463,4 @@ class MinimaxiPlatform(BasePlatform):
 
         except Exception as e:
             self.logger.error(f"Minimaxi combined usage formatting failed: {e}")
-            return f"Minimaxi.Usage:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"

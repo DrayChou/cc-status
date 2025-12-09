@@ -111,7 +111,7 @@ class DeepSeekPlatform(BasePlatform):
         # 处理空数据情况
         if balance_data is None:
             self.logger.info("No balance data available for display")
-            return "DeepSeek.B:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting DeepSeek balance formatting",
@@ -148,7 +148,7 @@ class DeepSeekPlatform(BasePlatform):
                     "DeepSeek balance info empty",
                     {"balance_infos": balance_infos},
                 )
-                return "DeepSeek.B:\033[91mNo Info\033[0m"
+                return "\033[91mNo Info\033[0m"
 
             # 获取总余额（通常第一个 balance_info 包含总余额信息）
             primary_balance = balance_infos[0]
@@ -234,4 +234,4 @@ class DeepSeekPlatform(BasePlatform):
             return balance_str
         except Exception as e:
             self.logger.error(f"DeepSeek balance formatting failed: {e}")
-            return f"DeepSeek.B:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"

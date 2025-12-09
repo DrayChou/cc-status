@@ -26,8 +26,8 @@ class GLMPlatform(BasePlatform):
     @property
     def api_base(self) -> str:
         # GLM余额查询使用正确的API基础地址
-        # 基于真实浏览器请求，使用 https://bigmodel.cn/api
-        return "https://bigmodel.cn/api"
+        # 支持使用 auth_token (API Key) 直接查询
+        return "https://open.bigmodel.cn/api/biz"
 
     def detect_platform(self, session_info: Dict[str, Any], token: str) -> bool:
         """Detect GLM platform"""
@@ -64,22 +64,25 @@ class GLMPlatform(BasePlatform):
         return False
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch balance data from GLM API using login_token"""
+        """Fetch balance data from GLM API using auth_token (API Key)"""
         try:
-            # 验证login_token是否配置
-            login_token = self.config.get("login_token")
-            if not login_token or not isinstance(login_token, str) or len(login_token.strip()) == 0:
-                self.logger.debug("GLM login_token not configured, skipping balance query")
+            # 验证认证token是否配置（支持 auth_token, api_key）
+            auth_token = (
+                self.config.get("auth_token") or
+                self.config.get("api_key")
+            )
+            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
+                self.logger.debug("GLM authentication token not configured, skipping balance query")
                 return None
 
             self.logger.debug(
-                "Starting GLM balance fetch with login_token",
-                {"token_length": len(login_token) if login_token else 0},
+                "Starting GLM balance fetch with authentication token",
+                {"token_length": len(auth_token) if auth_token else 0},
             )
 
             # 使用GLM正确的余额查询端点
-            # 基于真实浏览器请求，使用/biz/account/query-customer-account-report获取余额信息
-            balance_data = self.make_request("/biz/account/query-customer-account-report")
+            # API base 是 https://open.bigmodel.cn/api/biz，直接使用完整路径
+            balance_data = self.make_request("/account/query-customer-account-report")
 
             if balance_data:
                 # 从余额数据中提取信息
@@ -95,7 +98,7 @@ class GLMPlatform(BasePlatform):
                 )
 
                 # 同时获取订阅信息以显示到期时间
-                subscription_data = self.make_request("/biz/subscription/list")
+                subscription_data = self.make_request("/subscription/list")
 
                 # 合并余额和订阅数据
                 combined_data = {
@@ -124,10 +127,15 @@ class GLMPlatform(BasePlatform):
             }
 
     def make_request(self, endpoint: str) -> Optional[Dict[str, Any]]:
-        """重写make_request方法，使用login_token进行认证"""
-        login_token = self.config.get("login_token")
-        if not login_token:
-            self.logger.warning("No login_token available for GLM request")
+        """重写make_request方法，使用auth_token (API Key) 进行认证"""
+        # 获取认证token（支持 auth_token, api_key）
+        auth_token = (
+            self.config.get("auth_token") or
+            self.config.get("api_key")
+        )
+
+        if not auth_token:
+            self.logger.warning("No authentication token available (auth_token or api_key)")
             return None
 
         # 构建完整的URL
@@ -142,10 +150,12 @@ class GLMPlatform(BasePlatform):
 
         # 基于真实浏览器请求构建headers
         url = f"{api_base}{endpoint}"
+
+        # 使用 Bearer 格式进行认证
         headers = {
             'accept': 'application/json, text/plain, */*',
             'accept-language': 'zh',
-            'authorization': login_token,  # GLM使用完整的JWT token
+            'authorization': f"Bearer {auth_token}",
             'cache-control': 'no-cache',
             'pragma': 'no-cache',
             'priority': 'u=1, i',
@@ -159,14 +169,6 @@ class GLMPlatform(BasePlatform):
             'set-language': 'zh',
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0'
         }
-
-        # 添加组织ID和项目ID（从配置或默认）
-        org_id = self.config.get("bigmodel_organization", "org-0157fc0012064f86B6261289788959ae")
-        project_id = self.config.get("bigmodel_project", "proj_CE4Eb8359E0842F19c5f497a8A5Dd7b5")
-        if org_id:
-            headers['bigmodel-organization'] = org_id
-        if project_id:
-            headers['bigmodel-project'] = project_id
 
         try:
             self.logger.info(f"Making GLM API request to: {url}")
@@ -184,6 +186,7 @@ class GLMPlatform(BasePlatform):
                     return None
 
                 try:
+                    import json
                     json_data = response.json()
                     self.logger.info(f"GLM API response JSON: {json_data}")
 
@@ -362,7 +365,7 @@ class GLMPlatform(BasePlatform):
         """Format GLM subscription for display"""
         if subscription_data is None:
             self.logger.info("No subscription data available for display")
-            return "GLM.Sub:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         try:
             plan = subscription_data.get("plan", "Unknown")
@@ -383,4 +386,4 @@ class GLMPlatform(BasePlatform):
             return f"{color}{subscription_text}{reset}"
         except Exception as e:
             self.logger.error(f"GLM subscription formatting failed: {e}")
-            return f"GLM.Sub:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"

@@ -63,21 +63,35 @@ class KimiPlatform(BasePlatform):
         return False
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch balance data from Kimi API"""
+        """Fetch balance data from Kimi API using auth_token"""
         try:
-            # 验证auth_token是否配置
-            auth_token = self.config.get("auth_token") or self.config.get("api_key")
-            if not auth_token or not isinstance(auth_token, str) or len(auth_token.strip()) == 0:
-                self.logger.debug("Kimi auth_token/api_key not configured, skipping balance query")
+            # 只使用auth_token（支持api_key作为别名）
+            auth_token = (
+                self.config.get("auth_token")
+                or self.config.get("api_key")
+            )
+
+            # 验证是否有可用的token
+            if not auth_token:
+                self.logger.debug(
+                    "Kimi auth_token not configured, "
+                    "skipping balance query"
+                )
                 return None
 
             self.logger.debug(
                 "Starting Kimi balance fetch",
-                {"token_length": len(auth_token) if auth_token else 0},
+                {
+                    "has_auth_token": bool(auth_token),
+                    "auth_token_length": len(auth_token) if auth_token else 0,
+                },
             )
 
-            # 使用Kimi的余额查询端点
-            balance_data = self.make_request("/users/me/balance")
+            # 使用auth_token查询余额
+            self.logger.debug("Attempting balance query with auth_token")
+            balance_data = self._make_kimi_request(
+                "/v1/users/me/balance", auth_token
+            )
 
             if balance_data:
                 self.logger.info(
@@ -85,20 +99,56 @@ class KimiPlatform(BasePlatform):
                     {
                         "data_keys": list(balance_data.keys()),
                         "data_type": type(balance_data).__name__,
-                        "has_balance_infos": "balance_infos" in balance_data,
-                        "is_available": balance_data.get("is_available"),
+                        "has_balance_data": "data" in balance_data,
                     },
                 )
                 return balance_data
             else:
+                self.logger.warning("Kimi auth_token query failed")
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Kimi balance fetch failed: {e}")
+            return None
+
+    def _make_kimi_request(
+        self, endpoint: str, token: str
+    ) -> Optional[Dict[str, Any]]:
+        """Make Kimi-specific API request with provided token"""
+        import requests
+
+        # Kimi余额查询硬编码使用标准Moonshot API地址（不受配置影响）
+        url = f"https://api.moonshot.cn{endpoint}"
+
+        # 请求头 - 使用标准的Moonshot API格式
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+        }
+
+        try:
+            self.logger.debug(f"Making Kimi API request to: {url}")
+            self.logger.debug(
+                f"Using token (first 10 chars): {token[:10]}..."
+            )
+            response = requests.get(url, headers=headers, timeout=10)
+
+            self.logger.debug(f"Kimi API response status: {response.status_code}")
+
+            if response.status_code == 200:
+                json_data = response.json()
+                self.logger.debug(f"Kimi API response: {json_data}")
+                return json_data
+            else:
                 self.logger.warning(
-                    "Kimi balance API returned None",
-                    {"possible_cause": "API request failed or returned empty data"},
+                    f"Kimi API request failed with status "
+                    f"{response.status_code}: {response.text}"
                 )
                 return None
 
         except Exception as e:
-            self.logger.error(f"Kimi balance fetch failed: {e}")
+            self.logger.error(f"Kimi API request error: {e}")
             return None
 
     def fetch_subscription_data(self) -> Optional[Dict[str, Any]]:
@@ -111,7 +161,7 @@ class KimiPlatform(BasePlatform):
         # 处理空数据情况
         if balance_data is None:
             self.logger.info("No balance data available for display")
-            return "Kimi.B:\033[91mNoData\033[0m"
+            return "\033[91mNoData\033[0m"
 
         self.logger.debug(
             "Starting Kimi balance formatting",
@@ -122,7 +172,8 @@ class KimiPlatform(BasePlatform):
         )
 
         try:
-            # Kimi API 返回结构：{"code": 0, "data": {"available_balance": 5.19, "voucher_balance": 0, "cash_balance": 5.19}}
+            # Kimi API 返回结构：{"code": 0, "data": {"available_balance": 5.19,
+            # "voucher_balance": 0, "cash_balance": 5.19}}
             data = balance_data.get("data", {})
             balance = data.get("available_balance", 0)  # 使用available_balance字段
             currency = "CNY"  # Kimi只支持人民币
@@ -194,9 +245,11 @@ class KimiPlatform(BasePlatform):
             return balance_str
         except Exception as e:
             self.logger.error(f"Kimi balance formatting failed: {e}")
-            return f"Kimi.B:Error({str(e)[:20]})"
+            return f"Error({str(e)[:20]})"
 
-    def format_subscription_display(self, subscription_data: Dict[str, Any]) -> str:
+    def format_subscription_display(
+        self, subscription_data: Dict[str, Any]
+    ) -> str:
         """Format Kimi subscription for display"""
         if subscription_data is None:
             self.logger.info("No subscription data available for display")
@@ -227,7 +280,7 @@ class KimiPlatform(BasePlatform):
                         subscription_text = f"[{expiry_short}]"
                     else:
                         subscription_text = ""  # 格式不正确，不显示
-                except:
+                except Exception:
                     subscription_text = ""  # 解析失败，不显示
             else:
                 subscription_text = ""  # 无到期时间，不显示
