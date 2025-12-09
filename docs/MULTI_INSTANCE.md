@@ -38,7 +38,7 @@ cc-status 现在支持为同一平台配置多个实例，每个实例可以有�
       "enabled": true
     },
     "gaccodeuser1": {
-      "name": "GACCode From User2",
+      "name": "GACCode From user1",
       "platform_type": "gaccode",
       "api_key": "key2",
       "enabled": true
@@ -119,7 +119,7 @@ cc-status 现在支持为同一平台配置多个实例，每个实例可以有�
       "enabled": true
     },
     "gaccodeuser1": {
-      "name": "GACCode From User2",
+      "name": "GACCode From user1",
       "platform_type": "gaccode",
       "api_key": "sk-ant-oat01-...",
       "model": "claude-sonnet-4-5-20250929",
