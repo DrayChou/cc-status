@@ -146,3 +146,7 @@ test_*.py
 !test_usage_update.py
 !test_api_lock.py
 *.pyc
+
+# Configuration files - NEVER commit sensitive data
+config/
+!config/platforms.json.example
