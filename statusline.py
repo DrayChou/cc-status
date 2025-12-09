@@ -345,6 +345,106 @@ def get_today_usage():
         return None
 
 
+def get_ccusage_data():
+    """
+    获取 ccusage 统计数据（今日 token 消耗）
+    使用缓存 + 后台异步更新策略
+    """
+    import subprocess
+    from datetime import datetime
+
+    cache_manager = CacheManager()
+    today = datetime.now().strftime("%Y%m%d")
+    cache_key = f"ccusage_{today}"
+
+    # 先尝试从缓存获取
+    cached_data = cache_manager.get(cache_key)
+    if cached_data is not None:
+        logger.debug(f"Found cached ccusage data: {cached_data.get('totalTokens', 0)} tokens")
+        # 在后台触发更新（不阻塞）
+        _trigger_ccusage_update_async(cache_key, today)
+        return cached_data
+
+    # 没有缓存，同步获取一次（首次调用）
+    data = _fetch_ccusage_sync(today)
+    if data:
+        # 缓存数据，有效期5分钟
+        cache_manager.set(cache_key, data, ttl=300)
+
+    return data
+
+
+def _trigger_ccusage_update_async(cache_key: str, today: str):
+    """在后台异步更新 ccusage 数据"""
+    def update_task():
+        try:
+            data = _fetch_ccusage_sync(today)
+            if data:
+                cache_manager = CacheManager()
+                cache_manager.set(cache_key, data, ttl=300)
+                logger.debug(f"Background ccusage update completed: {data.get('totalTokens', 0)} tokens")
+        except Exception as e:
+            logger.debug(f"Background ccusage update failed: {e}")
+
+    update_thread = threading.Thread(target=update_task, daemon=True)
+    update_thread.start()
+
+
+def _fetch_ccusage_sync(today: str) -> dict:
+    """
+    同步获取 ccusage 数据
+    兼容 npx 的安装/更新提示
+    """
+    import subprocess
+
+    try:
+        # 使用 --yes 自动确认 npx 安装提示
+        # 使用 --json 输出 JSON 格式
+        # 使用 --since 只获取今天的数据
+        result = subprocess.run(
+            ["npx", "--yes", "ccusage", "-j", "-s", today],
+            capture_output=True,
+            text=True,
+            timeout=30,  # 30秒超时
+            env={**os.environ, "NO_COLOR": "1"}  # 禁用颜色输出
+        )
+
+        if result.returncode != 0:
+            logger.debug(f"ccusage command failed: {result.stderr}")
+            return None
+
+        # 解析 JSON 输出
+        output = result.stdout.strip()
+        if not output:
+            return None
+
+        data = json.loads(output)
+
+        # 提取 totals 数据
+        totals = data.get("totals", {})
+        return {
+            "totalTokens": totals.get("totalTokens", 0),
+            "totalCost": totals.get("totalCost", 0),
+            "inputTokens": totals.get("inputTokens", 0),
+            "outputTokens": totals.get("outputTokens", 0),
+            "cacheReadTokens": totals.get("cacheReadTokens", 0),
+            "cacheCreationTokens": totals.get("cacheCreationTokens", 0),
+        }
+
+    except subprocess.TimeoutExpired:
+        logger.warning("ccusage command timed out")
+        return None
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse ccusage output: {e}")
+        return None
+    except FileNotFoundError:
+        logger.warning("npx not found, ccusage unavailable")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to get ccusage data: {e}")
+        return None
+
+
 def main():
     """主函数"""
     # 处理命令行参数
@@ -408,6 +508,11 @@ def main():
         # 获取今日使用量
         usage_data = get_today_usage()
 
+        # 获取 ccusage 数据（token 消耗统计）
+        ccusage_data = None
+        if config.get("show_ccusage", True):
+            ccusage_data = get_ccusage_data()
+
         # 构建状态数据
         status_data = {
             "model": model_name,
@@ -416,7 +521,8 @@ def main():
             "directory": Path(current_dir).name if current_dir else "Unknown",
             "git": git_info,
             "platforms": platforms_data,
-            "usage": usage_data
+            "usage": usage_data,
+            "ccusage": ccusage_data
         }
 
         # 格式化状态

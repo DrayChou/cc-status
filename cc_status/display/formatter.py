@@ -46,6 +46,12 @@ class StatusFormatter:
             else:
                 formatted_parts.append(f"Time:{current_time}")
 
+        # ccusage token 消耗统计（在时间之后显示）
+        if config.get("show_ccusage", True):
+            ccusage_info = self._format_ccusage(status_data)
+            if ccusage_info:
+                formatted_parts.append(ccusage_info)
+
         # 今日使用量
         if config.get("show_today_usage", True):
             usage_info = self._format_usage(status_data)
@@ -95,6 +101,43 @@ class StatusFormatter:
         except Exception as e:
             self.logger.warning(f"Failed to format usage: {e}")
         return ""
+
+    def _format_ccusage(self, status_data: Dict[str, Any]) -> str:
+        """格式化 ccusage token 消耗统计"""
+        try:
+            ccusage_data = status_data.get("ccusage", {})
+            if not ccusage_data:
+                return ""
+
+            total_tokens = ccusage_data.get("totalTokens", 0)
+            total_cost = ccusage_data.get("totalCost", 0)
+
+            if total_tokens <= 0:
+                return ""
+
+            # 格式化 token 数量（使用 K/M 单位）
+            if total_tokens >= 1_000_000:
+                token_str = f"{total_tokens / 1_000_000:.1f}M"
+            elif total_tokens >= 1_000:
+                token_str = f"{total_tokens / 1_000:.1f}K"
+            else:
+                token_str = str(total_tokens)
+
+            # 格式化费用
+            cost_str = f"${total_cost:.2f}"
+
+            # 组合显示：Token:13.6M/$0.22
+            display_text = f"{token_str}/{cost_str}"
+
+            if self.use_colors:
+                usage_color = ColorScheme.get_usage_color(total_cost)
+                return f"Token:{usage_color}{display_text}{self.colors['reset']}"
+            else:
+                return f"Token:{display_text}"
+
+        except Exception as e:
+            self.logger.warning(f"Failed to format ccusage: {e}")
+            return ""
 
     def _format_directory(self, status_data: Dict[str, Any]) -> str:
         """格式化目录信息"""
