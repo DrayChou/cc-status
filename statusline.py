@@ -12,26 +12,26 @@ cc-status - Claude Code Status Bar Manager
 - Git分支状态
 """
 
-import sys
+import concurrent.futures
 import json
 import os
-from pathlib import Path
-from datetime import datetime
-import concurrent.futures
+import sys
 import threading
+from datetime import datetime
+from pathlib import Path
 
 # 添加项目路径到 Python 路径
 script_dir = Path(__file__).parent
 sys.path.insert(0, str(script_dir))
 
 try:
-    from cc_status.core.config import ConfigManager
+    from background_manager import BackgroundTaskManager
     from cc_status.core.cache import CacheManager
-    from cc_status.platforms.manager import PlatformManager
+    from cc_status.core.config import ConfigManager
     from cc_status.display.formatter import StatusFormatter
     from cc_status.display.renderer import StatusRenderer
+    from cc_status.platforms.manager import PlatformManager
     from cc_status.utils.logger import get_logger
-    from background_manager import BackgroundTaskManager
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Please ensure all dependencies are installed.")
@@ -51,13 +51,13 @@ def get_session_info():
         return {
             "session_id": None,
             "model": {"display_name": "Unknown"},
-            "workspace": {"current_dir": os.getcwd()}
+            "workspace": {"current_dir": os.getcwd()},
         }
     except (json.JSONDecodeError, Exception):
         return {
             "session_id": None,
             "model": {"display_name": "Unknown"},
-            "workspace": {"current_dir": os.getcwd()}
+            "workspace": {"current_dir": os.getcwd()},
         }
 
 
@@ -65,6 +65,7 @@ def get_git_info(directory):
     """获取Git分支信息"""
     try:
         import subprocess
+
         if not directory or not Path(directory).exists():
             return None
 
@@ -77,7 +78,7 @@ def get_git_info(directory):
                 ["git", "rev-parse", "--is-inside-work-tree"],
                 capture_output=True,
                 check=True,
-                timeout=5
+                timeout=5,
             )
 
             # 获取当前分支
@@ -86,7 +87,7 @@ def get_git_info(directory):
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=5
+                timeout=5,
             )
             branch = result.stdout.strip()
 
@@ -96,7 +97,7 @@ def get_git_info(directory):
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=5
+                timeout=5,
             )
             is_dirty = bool(result.stdout.strip())
 
@@ -104,7 +105,11 @@ def get_git_info(directory):
         finally:
             os.chdir(original_cwd)
 
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         return None
 
 
@@ -120,11 +125,13 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 return platform_id, None
 
             # 检查是否有认证信息
-            has_auth = any([
-                platform_config.get("api_key"),
-                platform_config.get("auth_token"),
-                platform_config.get("login_token")
-            ])
+            has_auth = any(
+                [
+                    platform_config.get("api_key"),
+                    platform_config.get("auth_token"),
+                    platform_config.get("login_token"),
+                ]
+            )
 
             if not has_auth:
                 return platform_id, {
@@ -132,7 +139,7 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "name": platform_config.get("name", platform_id),
                     "enabled": False,
                     "has_auth": False,
-                    "balance": None
+                    "balance": None,
                 }
 
             # 创建平台实例并获取数据
@@ -147,7 +154,7 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                     "enabled": True,
                     "has_auth": True,
                     "balance": None,
-                    "error": "Failed to create platform instance"
+                    "error": "Failed to create platform instance",
                 }
 
             try:
@@ -157,7 +164,9 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 # 获取订阅数据
                 subscription_data = None
                 try:
-                    subscription_data = platform_manager.fetch_subscription_data(platform_instance)
+                    subscription_data = platform_manager.fetch_subscription_data(
+                        platform_instance
+                    )
                 except Exception as e:
                     logger.debug(f"Failed to get subscription for {platform_id}: {e}")
 
@@ -168,18 +177,21 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 except Exception as e:
                     logger.debug(f"Failed to get usage for {platform_id}: {e}")
 
-                return platform_id, {
-                    "id": platform_id,
-                    "name": platform_config.get("name", platform_id),
-                    "enabled": True,
-                    "has_auth": True,
-                    "balance": balance_data,
-                    "subscription": subscription_data,
-                    "usage": usage_data,
-                    "platform_instance": platform_instance  # 添加平台实例供formatter使用
-                }
+                return (
+                    platform_id,
+                    {
+                        "id": platform_id,
+                        "name": platform_config.get("name", platform_id),
+                        "enabled": True,
+                        "has_auth": True,
+                        "balance": balance_data,
+                        "subscription": subscription_data,
+                        "usage": usage_data,
+                        "platform_instance": platform_instance,  # 添加平台实例供formatter使用
+                    },
+                )
             finally:
-                if hasattr(platform_instance, 'close'):
+                if hasattr(platform_instance, "close"):
                     platform_instance.close()
 
         except Exception as e:
@@ -190,16 +202,20 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 "enabled": True,
                 "has_auth": True,
                 "balance": None,
-                "error": str(e)
+                "error": str(e),
             }
 
     # 使用线程池并发获取所有平台数据
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_platform = {}
 
-        for platform_id, platform_config in platforms_config.get("platforms", {}).items():
+        for platform_id, platform_config in platforms_config.get(
+            "platforms", {}
+        ).items():
             if platform_config.get("enabled", False):
-                future = executor.submit(get_single_platform_data, platform_id, platform_config)
+                future = executor.submit(
+                    get_single_platform_data, platform_id, platform_config
+                )
                 future_to_platform[future] = platform_id
 
         for future in concurrent.futures.as_completed(future_to_platform, timeout=10):
@@ -251,13 +267,17 @@ def check_config():
 
         # 检查启用的平台
         enabled_platforms = []
-        for platform_id, platform_config in platforms_config.get("platforms", {}).items():
+        for platform_id, platform_config in platforms_config.get(
+            "platforms", {}
+        ).items():
             if platform_config.get("enabled", False):
-                has_auth = any([
-                    platform_config.get("api_key"),
-                    platform_config.get("auth_token"),
-                    platform_config.get("login_token")
-                ])
+                has_auth = any(
+                    [
+                        platform_config.get("api_key"),
+                        platform_config.get("auth_token"),
+                        platform_config.get("login_token"),
+                    ]
+                )
                 if has_auth:
                     enabled_platforms.append(platform_id)
 
@@ -313,17 +333,21 @@ def get_today_usage():
         # 尝试从缓存获取今日使用量
         cache_entry = cache_manager.get(f"usage_daily_{today}")
         if cache_entry is not None:
-            logger.debug(f"Found cached usage data: ${cache_entry.get('total_cost', 0):.2f}")
+            logger.debug(
+                f"Found cached usage data: ${cache_entry.get('total_cost', 0):.2f}"
+            )
             return cache_entry
 
         # 如果没有缓存数据，触发后台更新
         logger.debug("No cached usage data found, background update will be triggered")
         try:
             from update_usage import UsageUpdater
+
             updater = UsageUpdater()
 
             # 在后台线程中触发更新（不等待结果）
             import threading
+
             def trigger_update():
                 try:
                     updater.update_usage()
@@ -340,7 +364,7 @@ def get_today_usage():
         return None
 
     except Exception as e:
-        if 'logger' in globals():
+        if "logger" in globals():
             logger.warning(f"Failed to get today usage: {e}")
         return None
 
@@ -348,66 +372,234 @@ def get_today_usage():
 def get_ccusage_data():
     """
     获取 ccusage 统计数据（今日 token 消耗）
-    使用缓存 + 后台异步更新策略
+    使用锁机制 + 缓存策略，确保每分钟只执行一次
     """
     import subprocess
+    import platform
+    import time
     from datetime import datetime
+    from pathlib import Path
+
+    # 获取 logger 和 config
+    global logger, config_manager
+    if 'logger' not in globals():
+        logger = get_logger("statusline")
+    if 'config_manager' not in globals():
+        config_manager = ConfigManager()
 
     cache_manager = CacheManager()
+    config = config_manager.get_status_config()
     today = datetime.now().strftime("%Y%m%d")
     cache_key = f"ccusage_{today}"
 
+    # 获取配置参数
+    cache_ttl = config.get("cache_timeout", {}).get("ccusage", 60)
+    lock_timeout = config.get("lock_config", {}).get("timeout_seconds", 30)
+    wait_timeout = config.get("lock_config", {}).get("wait_timeout_seconds", 15)
+    recent_exec_window = config.get("lock_config", {}).get("recent_exec_window", 60)
+
+    # 定义锁文件路径（用于防止并发执行）
+    lock_dir = Path.home() / ".claude" / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_dir / "ccusage.lock"
+
+    # 定义执行时间记录文件（用于检查最近一分钟是否执行过）
+    exec_record_file = lock_dir / "ccusage_last_exec.json"
+
     # 先尝试从缓存获取
-    cached_data = cache_manager.get(cache_key)
+    cached_data = cache_manager.get(cache_key, ttl=cache_ttl)
     if cached_data is not None:
-        logger.debug(f"Found cached ccusage data: {cached_data.get('totalTokens', 0)} tokens")
+        logger.debug(
+            f"Found cached ccusage data: {cached_data.get('totalTokens', 0)} tokens"
+        )
         # 在后台触发更新（不阻塞）
         _trigger_ccusage_update_async(cache_key, today)
         return cached_data
 
-    # 没有缓存，同步获取一次（首次调用）
-    data = _fetch_ccusage_sync(today)
-    if data:
-        # 缓存数据，有效期5分钟
-        cache_manager.set(cache_key, data, ttl=300)
+    # 没有缓存，使用锁机制获取数据
+    fcntl_lock_fp = None
 
-    return data
+    try:
+        # 检查最近执行窗口内是否已经执行过
+        if exec_record_file.exists():
+            try:
+                with open(exec_record_file, 'r') as f:
+                    exec_data = json.load(f)
+                    last_exec_time = exec_data.get('timestamp', 0)
+                    current_time = time.time()
+
+                    # 如果在最近执行窗口内已经执行过，等待结果或返回旧缓存
+                    if current_time - last_exec_time < recent_exec_window:
+                        logger.debug(f"ccusage recently executed within {recent_exec_window}s window, waiting for result...")
+
+                        # 等待锁释放（最多等待 wait_timeout 秒）
+                        wait_start = time.time()
+                        while time.time() - wait_start < wait_timeout:
+                            time.sleep(0.1)
+
+                            # 检查是否有新缓存
+                            cached_data = cache_manager.get(cache_key, ttl=cache_ttl)
+                            if cached_data is not None:
+                                logger.debug("Found updated cache during wait")
+                                return cached_data
+
+                        # 如果等待后还是没有缓存，返回旧数据或None
+                        logger.debug("No updated cache found after wait")
+                        return cached_data
+            except (json.JSONDecodeError, IOError):
+                logger.debug("Failed to read execution record, proceeding with lock acquisition")
+
+        # 获取锁并执行 ccusage
+        is_lock_owner = False
+
+        # 检查平台并尝试获取锁
+        if platform.system() in ('Linux', 'Darwin'):  # Linux 或 macOS
+            try:
+                import fcntl
+                fcntl_lock_fp = open(lock_file, 'w')
+                try:
+                    # 尝试获取排他锁（Linux/macOS）
+                    fcntl.flock(fcntl_lock_fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    is_lock_owner = True
+                    logger.debug(f"Acquired fcntl lock")
+                except (IOError, OSError):
+                    # 无法获取锁，等待其他进程完成
+                    fcntl_lock_fp.close()
+                    fcntl_lock_fp = None
+                    is_lock_owner = False
+                    logger.debug("Failed to acquire fcntl lock, will wait")
+            except ImportError:
+                # fcntl 不可用，使用基于文件的简单锁
+                is_lock_owner = _try_acquire_simple_lock(lock_file, lock_timeout)
+                if is_lock_owner:
+                    logger.debug(f"Acquired simple file lock")
+        else:
+            # Windows 或其他平台，使用基于文件的简单锁
+            is_lock_owner = _try_acquire_simple_lock(lock_file, lock_timeout)
+            if is_lock_owner:
+                logger.debug(f"Acquired simple file lock")
+
+        # 记录执行时间
+        with open(exec_record_file, 'w') as f:
+            json.dump({
+                'timestamp': time.time()
+            }, f)
+
+        if is_lock_owner:
+            logger.debug(f"Lock owner executing ccusage command...")
+            # 只有获得锁的进程才执行实际的 ccusage 命令
+            try:
+                data = _fetch_ccusage_sync(today)
+                if data:
+                    # 缓存数据
+                    cache_manager.set(cache_key, data, ttl=cache_ttl)
+                    logger.debug(f"ccusage data fetched and cached: {data.get('totalTokens', 0)} tokens")
+                return data
+            except Exception as e:
+                logger.warning(f"Failed to fetch ccusage data: {e}")
+                return None
+        else:
+            # 没有获得锁，等待其他进程完成
+            logger.debug(f"Waiting for other process to fetch ccusage data (max {wait_timeout}s)...")
+            wait_start = time.time()
+            while time.time() - wait_start < wait_timeout:
+                time.sleep(0.2)
+                cached_data = cache_manager.get(cache_key, ttl=cache_ttl)
+                if cached_data is not None:
+                    logger.debug("Found cached data while waiting")
+                    return cached_data
+
+            # 等待超时，返回None
+            logger.warning(f"Timeout waiting for ccusage data after {wait_timeout}s")
+            return None
+
+    except Exception as e:
+        logger.warning(f"Error in get_ccusage_data: {e}")
+        return None
+    finally:
+        # 确保fcntl锁被正确释放
+        if fcntl_lock_fp:
+            try:
+                fcntl.flock(fcntl_lock_fp.fileno(), fcntl.LOCK_UN)
+                fcntl_lock_fp.close()
+            except:
+                pass
+
+
+def _try_acquire_simple_lock(lock_marker: Path, lock_timeout: int = 30) -> bool:
+    """
+    简单的基于文件的锁机制（用于 Windows 或 fcntl 不可用的情况）
+
+    Args:
+        lock_marker: 锁标记文件路径
+        lock_timeout: 锁超时时间（秒）
+
+    Returns:
+        bool: 是否获得锁
+    """
+    try:
+        # 尝试创建锁标记文件
+        if not lock_marker.exists():
+            lock_marker.touch()
+            return True
+        else:
+            # 检查锁文件是否过期
+            lock_age = time.time() - lock_marker.stat().st_mtime
+            if lock_age > lock_timeout:
+                # 锁文件过期，删除并重新创建
+                lock_marker.unlink(missing_ok=True)
+                lock_marker.touch()
+                return True
+            return False
+    except (OSError, IOError):
+        return False
 
 
 def _trigger_ccusage_update_async(cache_key: str, today: str):
-    """在后台异步更新 ccusage 数据"""
+    """
+    在后台异步更新 ccusage 数据（仅作为缓存预热）
+    注意：由于主函数已经有锁保护，这里不保证实时性
+    """
     def update_task():
         try:
             data = _fetch_ccusage_sync(today)
             if data:
                 cache_manager = CacheManager()
-                cache_manager.set(cache_key, data, ttl=300)
-                logger.debug(f"Background ccusage update completed: {data.get('totalTokens', 0)} tokens")
-        except Exception as e:
-            logger.debug(f"Background ccusage update failed: {e}")
+                cache_manager.set(cache_key, data, ttl=60)
+        except:
+            pass  # 静默失败，不影响主流程
 
-    update_thread = threading.Thread(target=update_task, daemon=True)
-    update_thread.start()
+    threading.Thread(target=update_task, daemon=True).start()
 
 
 def _fetch_ccusage_sync(today: str) -> dict:
     """
     同步获取 ccusage 数据
-    兼容 npx 的安装/更新提示
+    优先使用全局安装的 ccusage，fallback 到 npx
     """
     import subprocess
+    import shutil
 
     try:
-        # 使用 --yes 自动确认 npx 安装提示
-        # 使用 --json 输出 JSON 格式
-        # 使用 --since 只获取今天的数据
+        # 首先尝试使用全局安装的 ccusage
         result = subprocess.run(
-            ["npx", "--yes", "ccusage", "-j", "-s", today],
+            ["ccusage", "daily", "-j", "-s", today],
             capture_output=True,
             text=True,
             timeout=30,  # 30秒超时
-            env={**os.environ, "NO_COLOR": "1"}  # 禁用颜色输出
+            env={**os.environ, "NO_COLOR": "1"},  # 禁用颜色输出
         )
+
+        if result.returncode != 0:
+            # 如果全局安装的 ccusage 失败，尝试使用 npx
+            logger.debug("Global ccusage failed, trying npx...")
+            result = subprocess.run(
+                ["npx", "--yes", "ccusage", "daily", "-j", "-s", today],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "NO_COLOR": "1"},
+            )
 
         if result.returncode != 0:
             logger.debug(f"ccusage command failed: {result.stderr}")
@@ -438,7 +630,7 @@ def _fetch_ccusage_sync(today: str) -> dict:
         logger.warning(f"Failed to parse ccusage output: {e}")
         return None
     except FileNotFoundError:
-        logger.warning("npx not found, ccusage unavailable")
+        logger.warning("ccusage not found, please install it with: npm install -g ccusage")
         return None
     except Exception as e:
         logger.warning(f"Failed to get ccusage data: {e}")

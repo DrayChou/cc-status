@@ -156,6 +156,7 @@ class ConfigManager:
             "show_time": True,
             "show_session_cost": True,
             "show_today_usage": True,
+            "show_ccusage": True,  # 新增：显示 ccusage 统计
             "show_directory": True,
             "layout": "single_line",
             "multiplier_config": {
@@ -184,7 +185,13 @@ class ConfigManager:
             "cache_timeout": {
                 "balance": 300,  # 5分钟
                 "subscription": 3600,  # 1小时
-                "usage": 600  # 10分钟
+                "usage": 600,  # 10分钟
+                "ccusage": 60  # 1分钟
+            },
+            "lock_config": {
+                "timeout_seconds": 30,  # 锁超时时间
+                "wait_timeout_seconds": 15,  # 等待锁释放的超时时间
+                "recent_exec_window": 60  # 最近执行窗口（秒）
             }
         }
 
