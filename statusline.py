@@ -447,23 +447,29 @@ def _fetch_ccusage_sync(today: str) -> dict:
 
 def main():
     """主函数"""
+    # 解析命令行参数
+    selected_platform = None
+
     # 处理命令行参数
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--init-config":
+    for arg in sys.argv[1:]:
+        if arg == "--init-config":
             return init_config()
-        elif sys.argv[1] == "--check-config":
+        elif arg == "--check-config":
             return check_config()
-        elif sys.argv[1] in ["--help", "-h"]:
+        elif arg in ["--help", "-h"]:
             print("cc-status - Claude Code Multi-Platform Status Bar Manager")
             print()
             print("Usage:")
-            print("  python statusline.py              # Run status bar")
-            print("  python statusline.py --init-config    # Initialize configuration")
-            print("  python statusline.py --check-config   # Check configuration")
-            print("  python statusline.py --help           # Show this help")
+            print("  python statusline.py                    # Run status bar")
+            print("  python statusline.py --platform=minimax # Highlight specific platform")
+            print("  python statusline.py --init-config      # Initialize configuration")
+            print("  python statusline.py --check-config     # Check configuration")
+            print("  python statusline.py --help             # Show this help")
             return
-        else:
-            print(f"Unknown argument: {sys.argv[1]}")
+        elif arg.startswith("--platform="):
+            selected_platform = arg.split("=", 1)[1]
+        elif not arg.startswith("--"):
+            print(f"Unknown argument: {arg}")
             print("Use --help for available options")
             return 1
 
@@ -522,7 +528,8 @@ def main():
             "git": git_info,
             "platforms": platforms_data,
             "usage": usage_data,
-            "ccusage": ccusage_data
+            "ccusage": ccusage_data,
+            "selected_platform": selected_platform  # 添加选中的平台
         }
 
         # 格式化状态

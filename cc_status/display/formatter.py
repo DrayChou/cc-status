@@ -159,6 +159,7 @@ class StatusFormatter:
         """格式化所有平台的余额和订阅信息"""
         balance_parts = []
         platforms_data = status_data.get("platforms", {})
+        selected_platform = status_data.get("selected_platform")  # 获取选中的平台
 
         for platform_id, platform_info in platforms_data.items():
             try:
@@ -195,7 +196,20 @@ class StatusFormatter:
                 # 只有有有效的余额或订阅信息才显示
                 if platform_parts:
                     display_text = " ".join(platform_parts)
-                    balance_parts.append(f"{platform_name}:{display_text}")
+
+                    # 如果是选中的平台，使用醒目的颜色（亮洋红色）
+                    is_selected = (
+                        selected_platform and
+                        (platform_id.lower() == selected_platform.lower() or
+                         platform_name.lower() == selected_platform.lower())
+                    )
+
+                    if is_selected and self.use_colors:
+                        from ..utils.colors import ColorScheme
+                        platform_display = f"{ColorScheme.BRIGHT_MAGENTA}{platform_name}{self.colors['reset']}"
+                        balance_parts.append(f"{platform_display}:{display_text}")
+                    else:
+                        balance_parts.append(f"{platform_name}:{display_text}")
 
             except Exception as e:
                 self.logger.warning(f"Failed to format balance for {platform_id}: {e}")
