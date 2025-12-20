@@ -160,6 +160,7 @@ class StatusFormatter:
         balance_parts = []
         platforms_data = status_data.get("platforms", {})
         selected_platform = status_data.get("selected_platform")  # 获取选中的平台
+        selected_platform_found = False  # 标记是否找到选中的平台
 
         for platform_id, platform_info in platforms_data.items():
             try:
@@ -193,17 +194,25 @@ class StatusFormatter:
                     if usage_info and usage_info != "Error":
                         platform_parts.append(usage_info)
 
-                # 只有有有效的余额或订阅信息才显示
-                if platform_parts:
-                    display_text = " ".join(platform_parts)
+                # 判断是否是选中的平台
+                is_selected = (
+                    selected_platform and
+                    (platform_id.lower() == selected_platform.lower() or
+                     platform_name.lower() == selected_platform.lower())
+                )
+
+                if is_selected:
+                    selected_platform_found = True
+
+                # 如果有余额或订阅信息，或者是选中的平台（即使没数据也要显示）
+                if platform_parts or is_selected:
+                    # 如果没有数据但是被选中，显示占位符
+                    if not platform_parts:
+                        display_text = "-"  # 使用 "-" 表示暂无数据
+                    else:
+                        display_text = " ".join(platform_parts)
 
                     # 如果是选中的平台，使用醒目的颜色（亮洋红色）
-                    is_selected = (
-                        selected_platform and
-                        (platform_id.lower() == selected_platform.lower() or
-                         platform_name.lower() == selected_platform.lower())
-                    )
-
                     if is_selected and self.use_colors:
                         from ..utils.colors import ColorScheme
                         platform_display = f"{ColorScheme.BRIGHT_MAGENTA}{platform_name}{self.colors['reset']}"
@@ -213,6 +222,15 @@ class StatusFormatter:
 
             except Exception as e:
                 self.logger.warning(f"Failed to format balance for {platform_id}: {e}")
+
+        # 如果指定了选中平台但未找到，添加一个提示条目
+        if selected_platform and not selected_platform_found:
+            if self.use_colors:
+                from ..utils.colors import ColorScheme
+                platform_display = f"{ColorScheme.BRIGHT_MAGENTA}{selected_platform}{self.colors['reset']}"
+                balance_parts.append(f"{platform_display}:NotFound")
+            else:
+                balance_parts.append(f"{selected_platform}:NotFound")
 
         return balance_parts
 
