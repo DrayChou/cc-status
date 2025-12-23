@@ -101,6 +101,29 @@ class ColorScheme:
             return cls.GRAY          # 灰色 - 劣质 (Poor)
 
     @classmethod
+    def get_budget_warning_color(cls, cost: float, budget: float) -> str:
+        """根据预算使用情况返回警告颜色
+
+        Args:
+            cost: 当前使用成本
+            budget: 预算限制
+
+        Returns:
+            对应的颜色代码
+        """
+        if budget <= 0:
+            return cls.RESET  # 无预算限制
+
+        percentage = (cost / budget) * 100
+
+        if percentage >= 90:
+            return cls.EXOTIC_RED    # 90%以上 - 红色警告
+        elif percentage >= 70:
+            return cls.ORANGE        # 70-89% - 橙色警告
+        else:
+            return cls.GREEN         # 70%以下 - 绿色正常
+
+    @classmethod
     def get_balance_color(cls, balance: float, currency: str = "USD") -> str:
         """根据余额返回对应的颜色代码
 

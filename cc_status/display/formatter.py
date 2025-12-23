@@ -18,7 +18,57 @@ class StatusFormatter:
         self.colors = ColorScheme.get_status_colors()
         self.use_colors = ColorScheme.is_color_supported()
 
-    def format_status(self, status_data: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
+        # 初始化分隔符样式和字符集
+        import os
+        self.separator_style = os.environ.get('CC_STATUS_SEPARATOR', 'pipe')
+        self.separator_char = self._get_separator_char(self.separator_style)
+        self.charset = os.environ.get('CC_STATUS_CHARSET', 'unicode')
+
+        # 初始化 Git 符号（根据字符集）
+        self.git_symbols = self._get_git_symbols()
+
+    def _get_separator_char(self, style: str) -> str:
+        """获取分隔符字符
+
+        Args:
+            style: 分隔符样式 ('pipe', 'arrow', 'bullet')
+
+        Returns:
+            对应的分隔符字符串
+        """
+        separators = {
+            'pipe': ' | ',
+            'arrow': ' ⮞ ',
+            'bullet': ' • ',
+        }
+        return separators.get(style, ' | ')
+
+    def _get_git_symbols(self) -> dict:
+        """获取 Git 符号（根据字符集）
+
+        Returns:
+            包含各种 Git 符号的字典
+        """
+        if self.charset == 'ascii':
+            return {
+                'branch': '~',
+                'ahead': '^',
+                'behind': 'v',
+                'stashed': 'S',
+                'dirty': '*',
+                'clean': '=',
+            }
+        else:
+            return {
+                'branch': '⎇',
+                'ahead': '↑',
+                'behind': '↓',
+                'stashed': '⚑',
+                'dirty': '●',
+                'clean': '✓',
+            }
+
+    def format_status(self, status_data: Dict[str, Any], config: Dict[str, Any]) -> str:
         """
         格式化状态信息
 
@@ -27,7 +77,7 @@ class StatusFormatter:
             config: 配置信息
 
         Returns:
-            格式化后的状态信息列表
+            格式化后的状态信息字符串
         """
         formatted_parts = []
 
@@ -73,18 +123,39 @@ class StatusFormatter:
         if config.get("show_git_branch", True):
             git_info = status_data.get("git")
             if git_info:
-                branch_text = git_info.get("branch", "detached")
+                branch = git_info.get("branch", "detached")
                 is_dirty = git_info.get("is_dirty", False)
+                ahead = git_info.get("ahead", 0)
+                behind = git_info.get("behind", 0)
+                stashed = git_info.get("stashed", 0)
+
+                # 构建 Git 状态文本
+                git_parts = [branch]
+
+                # 添加 ahead/behind 计数
+                if ahead > 0:
+                    git_parts.append(f"{self.git_symbols['ahead']}{ahead}")
+                if behind > 0:
+                    git_parts.append(f"{self.git_symbols['behind']}{behind}")
+
+                # 添加 stash 计数
+                if stashed > 0:
+                    git_parts.append(f"{self.git_symbols['stashed']}{stashed}")
+
+                # 添加脏状态指示器
                 if is_dirty:
-                    branch_text += "*"
+                    git_parts.append(self.git_symbols['dirty'])
+
+                git_text = "".join(git_parts)
 
                 if self.use_colors:
                     git_color = self.colors['git_dirty'] if is_dirty else self.colors['git_clean']
-                    formatted_parts.append(f"Git:{git_color}{branch_text}{self.colors['reset']}")
+                    formatted_parts.append(f"Git:{git_color}{git_text}{self.colors['reset']}")
                 else:
-                    formatted_parts.append(f"Git:{branch_text}")
+                    formatted_parts.append(f"Git:{git_text}")
 
-        return formatted_parts
+        # 使用分隔符连接所有部分
+        return self.separator_char.join(formatted_parts)
 
     def _format_usage(self, status_data: Dict[str, Any]) -> str:
         """格式化使用量信息"""
@@ -112,28 +183,52 @@ class StatusFormatter:
             total_tokens = ccusage_data.get("totalTokens", 0)
             total_cost = ccusage_data.get("totalCost", 0)
 
-            if total_tokens <= 0:
+            if total_tokens <= 0 and total_cost <= 0:
                 return ""
 
-            # 格式化 token 数量（使用 K/M 单位）
-            if total_tokens >= 1_000_000:
-                token_str = f"{total_tokens / 1_000_000:.1f}M"
-            elif total_tokens >= 1_000:
-                token_str = f"{total_tokens / 1_000:.1f}K"
-            else:
-                token_str = str(total_tokens)
+            # 获取预算配置
+            import os
+            session_budget = float(os.environ.get('CC_STATUS_SESSION_BUDGET', 0))
 
-            # 格式化费用
-            cost_str = f"${total_cost:.2f}"
+            # 构建显示文本
+            display_parts = []
 
-            # 组合显示：Token:13.6M/$0.22
-            display_text = f"{token_str}/{cost_str}"
+            # 显示 token 统计（如果存在）
+            if total_tokens > 0:
+                # 格式化 token 数量（使用 K/M 单位）
+                if total_tokens >= 1_000_000:
+                    token_str = f"{total_tokens / 1_000_000:.1f}M"
+                elif total_tokens >= 1_000:
+                    token_str = f"{total_tokens / 1_000:.1f}K"
+                else:
+                    token_str = str(total_tokens)
+
+                # 显示格式：Token:13.6M
+                display_parts.append(f"Token:{token_str}")
+
+            # 显示成本统计（如果存在）
+            if total_cost > 0:
+                cost_str = f"${total_cost:.2f}"
+
+                # 如果有预算，显示百分比
+                if session_budget > 0:
+                    percentage = min(100, (total_cost / session_budget) * 100)
+                    cost_str += f"[{percentage:.0f}%]"
+
+                display_parts.append(cost_str)
+
+            display_text = "/".join(display_parts)
 
             if self.use_colors:
-                usage_color = ColorScheme.get_usage_color(total_cost)
-                return f"Token:{usage_color}{display_text}{self.colors['reset']}"
+                # 使用预算警告颜色
+                if session_budget > 0:
+                    usage_color = ColorScheme.get_budget_warning_color(total_cost, session_budget)
+                else:
+                    usage_color = ColorScheme.get_usage_color(total_cost)
+
+                return f"Usage:{usage_color}{display_text}{self.colors['reset']}"
             else:
-                return f"Token:{display_text}"
+                return f"Usage:{display_text}"
 
         except Exception as e:
             self.logger.warning(f"Failed to format ccusage: {e}")

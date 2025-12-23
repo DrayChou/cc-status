@@ -101,7 +101,44 @@ def get_git_info(directory):
             )
             is_dirty = bool(result.stdout.strip())
 
-            return {"branch": branch or "detached", "is_dirty": is_dirty}
+            # 获取 ahead/behind 计数
+            ahead = 0
+            behind = 0
+            try:
+                result = subprocess.run(
+                    ["git", "rev-list", "--count", "--left-right", "HEAD...@{u}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.stdout.strip():
+                    ahead_str, behind_str = result.stdout.strip().split()
+                    ahead = int(ahead_str)
+                    behind = int(behind_str)
+            except:
+                pass  # 如果获取失败，保持默认值0
+
+            # 获取 stash 数量
+            stashed = 0
+            try:
+                result = subprocess.run(
+                    ["git", "stash", "list", "--count"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.stdout.strip():
+                    stashed = int(result.stdout.strip())
+            except:
+                pass  # 如果获取失败，保持默认值0
+
+            return {
+                "branch": branch or "detached",
+                "is_dirty": is_dirty,
+                "ahead": ahead,
+                "behind": behind,
+                "stashed": stashed
+            }
         finally:
             os.chdir(original_cwd)
 
@@ -218,14 +255,20 @@ def get_all_platforms_data(platform_manager: PlatformManager, config: dict) -> d
                 )
                 future_to_platform[future] = platform_id
 
-        for future in concurrent.futures.as_completed(future_to_platform, timeout=10):
-            platform_id = future_to_platform[future]
-            try:
-                _, platform_data = future.result()
-                if platform_data:
-                    platforms_data[platform_id] = platform_data
-            except Exception as e:
-                logger.warning(f"Future failed for platform {platform_id}: {e}")
+        # 增加超时时间到30秒，并改进错误处理
+        timeout_seconds = 30
+        try:
+            for future in concurrent.futures.as_completed(future_to_platform, timeout=timeout_seconds):
+                platform_id = future_to_platform[future]
+                try:
+                    _, platform_data = future.result()
+                    if platform_data:
+                        platforms_data[platform_id] = platform_data
+                except Exception as e:
+                    logger.warning(f"Future failed for platform {platform_id}: {e}")
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"Platform data collection timed out after {timeout_seconds} seconds")
+            # 即使超时也继续，不让整个状态栏失败
 
     return platforms_data
 
