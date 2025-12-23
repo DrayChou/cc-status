@@ -29,12 +29,12 @@ class StatusRenderer:
                 return
 
             layout = config.get("layout", "single_line")
-            auto_wrap = config.get("auto_wrap", True)
+            auto_wrap = config.get("auto_wrap", False)
 
             if layout == "multi_line":
                 # 多行显示 - 按分隔符分割
                 import re
-                parts = re.split(r' \| | ⮞ | • ', formatted_status)
+                parts = re.split(r'\s*\|\s*|\s*⮞\s*|\s*•\s*', formatted_status)
                 for part in parts:
                     if part.strip():
                         print(part.strip(), flush=True)
@@ -71,7 +71,8 @@ class StatusRenderer:
                 return
 
             # 需要换行 - 按分隔符分割
-            separator_pattern = r' \| | ⮞ | • '
+            import re
+            separator_pattern = r'\s*\|\s*|\s*⮞\s*|\s*•\s*'
             parts = re.split(separator_pattern, text)
 
             current_line = ""
@@ -90,9 +91,9 @@ class StatusRenderer:
                     # 添加到当前行
                     if current_line:
                         # 恢复分隔符
-                        if ' ⮞ ' in text:
+                        if '⮞' in text:
                             current_line += ' ⮞ ' + part
-                        elif ' • ' in text:
+                        elif '•' in text:
                             current_line += ' • ' + part
                         else:
                             current_line += ' | ' + part

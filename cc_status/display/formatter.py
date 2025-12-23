@@ -4,6 +4,7 @@
 Status formatter - 格式化状态信息显示
 """
 
+import os
 from typing import Dict, Any, List
 from datetime import datetime
 from ..utils.logger import get_logger
@@ -19,13 +20,25 @@ class StatusFormatter:
         self.use_colors = ColorScheme.is_color_supported()
 
         # 初始化分隔符样式和字符集
-        import os
-        self.separator_style = os.environ.get('CC_STATUS_SEPARATOR', 'pipe')
+        separator = os.environ.get('CC_STATUS_SEPARATOR', 'pipe')
+        self.separator_style = self._validate_separator_style(separator)
         self.separator_char = self._get_separator_char(self.separator_style)
-        self.charset = os.environ.get('CC_STATUS_CHARSET', 'unicode')
+
+        charset = os.environ.get('CC_STATUS_CHARSET', 'unicode')
+        self.charset = self._validate_charset(charset)
 
         # 初始化 Git 符号（根据字符集）
         self.git_symbols = self._get_git_symbols()
+
+    def _validate_separator_style(self, style: str) -> str:
+        """验证分隔符样式"""
+        valid_styles = ['pipe', 'arrow', 'bullet']
+        return style if style in valid_styles else 'pipe'
+
+    def _validate_charset(self, charset: str) -> str:
+        """验证字符集"""
+        valid_charsets = ['ascii', 'unicode']
+        return charset if charset in valid_charsets else 'unicode'
 
     def _get_separator_char(self, style: str) -> str:
         """获取分隔符字符
@@ -187,8 +200,11 @@ class StatusFormatter:
                 return ""
 
             # 获取预算配置
-            import os
-            session_budget = float(os.environ.get('CC_STATUS_SESSION_BUDGET', 0))
+            try:
+                budget_str = os.environ.get('CC_STATUS_SESSION_BUDGET', '0')
+                session_budget = float(budget_str) if budget_str else 0.0
+            except (ValueError, TypeError):
+                session_budget = 0.0
 
             # 构建显示文本
             display_parts = []

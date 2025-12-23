@@ -115,8 +115,8 @@ def get_git_info(directory):
                     ahead_str, behind_str = result.stdout.strip().split()
                     ahead = int(ahead_str)
                     behind = int(behind_str)
-            except:
-                pass  # 如果获取失败，保持默认值0
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, IndexError) as e:
+                logger.debug(f"Failed to get ahead/behind count: {e}")
 
             # 获取 stash 数量
             stashed = 0
@@ -129,8 +129,8 @@ def get_git_info(directory):
                 )
                 if result.stdout.strip():
                     stashed = int(result.stdout.strip())
-            except:
-                pass  # 如果获取失败，保持默认值0
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError) as e:
+                logger.debug(f"Failed to get stash count: {e}")
 
             return {
                 "branch": branch or "detached",
