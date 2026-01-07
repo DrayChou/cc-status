@@ -25,9 +25,8 @@ class GLMPlatform(BasePlatform):
 
     @property
     def api_base(self) -> str:
-        # GLM余额查询使用正确的API基础地址
-        # 支持使用 auth_token (API Key) 直接查询
-        return "https://open.bigmodel.cn/api/biz"
+        # GLM使用统一API基础地址
+        return "https://bigmodel.cn/api"
 
     def detect_platform(self, session_info: Dict[str, Any], token: str) -> bool:
         """Detect GLM platform"""
@@ -52,8 +51,8 @@ class GLMPlatform(BasePlatform):
             )
             return True
 
-        # 方法3: 通过token格式判断
-        if token and (token.startswith("8ef0c8d") or token.startswith("eyJ")):
+        # 方法3: 通过token格式判断（GLM token 以数字开头或 eyJ 开头）
+        if token and (token[0].isdigit() or token.startswith("eyJ")):
             self.logger.debug(
                 "GLM token format detected",
                 {"method": "token_prefix", "token_prefix": token[:10] + "..."},
@@ -64,7 +63,7 @@ class GLMPlatform(BasePlatform):
         return False
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch balance data from GLM API using auth_token (API Key)"""
+        """Fetch balance/quota data from GLM API using auth_token (API Key)"""
         try:
             # 验证认证token是否配置（支持 auth_token, api_key）
             auth_token = (
@@ -80,39 +79,33 @@ class GLMPlatform(BasePlatform):
                 {"token_length": len(auth_token) if auth_token else 0},
             )
 
-            # 使用GLM正确的余额查询端点
-            # API base 是 https://open.bigmodel.cn/api/biz，直接使用完整路径
-            balance_data = self.make_request("/account/query-customer-account-report")
+            # 使用新的配额查询API
+            quota_data = self.make_request("/monitor/usage/quota/limit")
 
-            if balance_data:
-                # 从余额数据中提取信息
-                # 响应结构：{"code":200,"msg":"操作成功","data":{"balance":-0.00043896,"availableBalance":-0.00043896}}
+            if quota_data:
                 self.logger.info(
-                    "GLM balance data fetched successfully",
+                    "GLM quota data fetched successfully",
                     {
-                        "data_keys": list(balance_data.keys()),
-                        "data_type": type(balance_data).__name__,
-                        "has_data": "data" in balance_data,
-                        "success": balance_data.get("success"),
+                        "data_keys": list(quota_data.keys()),
+                        "has_limits": "limits" in quota_data.get("data", {}),
                     },
                 )
 
                 # 同时获取订阅信息以显示到期时间
-                subscription_data = self.make_request("/subscription/list")
+                subscription_data = self.make_request("/biz/subscription/list?pageSize=9999&pageNum=1")
 
-                # 合并余额和订阅数据
+                # 合并配额和订阅数据
                 combined_data = {
-                    "balance_data": balance_data,
+                    "quota_data": quota_data,
                     "subscription_data": subscription_data
                 }
 
                 return combined_data
             else:
                 self.logger.warning(
-                    "GLM balance API returned None or empty data",
+                    "GLM quota API returned None or empty data",
                     {"possible_cause": "API request failed or returned empty data"},
                 )
-                # 返回API不可用状态，包含更多信息
                 return {
                     "api_unavailable": True,
                     "reason": "API returned empty response - token may be expired or invalid"
@@ -171,13 +164,13 @@ class GLMPlatform(BasePlatform):
         }
 
         try:
-            self.logger.info(f"Making GLM API request to: {url}")
-            self.logger.info(f"GLM request headers: {headers}")
+            self.logger.debug(f"Making GLM API request to: {url}")
             response = requests.get(url, headers=headers, timeout=10)
 
-            self.logger.info(f"GLM API response status: {response.status_code}")
-            self.logger.info(f"GLM API response headers: {dict(response.headers)}")
-            self.logger.info(f"GLM API response text: {response.text[:500]}")
+            self.logger.debug(
+                "GLM API response received",
+                {"status": response.status_code, "url": url},
+            )
 
             if response.status_code == 200:
                 # 检查响应内容是否为空
@@ -188,7 +181,16 @@ class GLMPlatform(BasePlatform):
                 try:
                     import json
                     json_data = response.json()
-                    self.logger.info(f"GLM API response JSON: {json_data}")
+
+                    # 只记录关键字段，不记录完整响应（防止敏感信息泄漏）
+                    self.logger.debug(
+                        "GLM API response parsed",
+                        {
+                            "code": json_data.get("code"),
+                            "has_data": "data" in json_data,
+                            "url": url,
+                        },
+                    )
 
                     # 检查业务错误码
                     if json_data.get("code") == 401:
@@ -197,7 +199,6 @@ class GLMPlatform(BasePlatform):
                             "api_error": True,
                             "error_code": 401,
                             "error_msg": "Token expired or invalid",
-                            "http_status": response.status_code,
                             "reason": "Authentication failed"
                         }
                     elif json_data.get("code") != 200:
@@ -206,24 +207,22 @@ class GLMPlatform(BasePlatform):
                             "api_error": True,
                             "error_code": json_data.get("code", "ERROR"),
                             "error_msg": json_data.get("msg", "Unknown error"),
-                            "http_status": response.status_code,
-                            "raw_response": json_data
                         }
 
                     return json_data
                 except json.JSONDecodeError as e:
                     self.logger.error(f"GLM API response is not valid JSON: {e}")
-                    self.logger.error(f"Response text: {response.text}")
                     return None
             else:
-                # 返回HTTP状态码错误
-                self.logger.warning(f"GLM API request failed with status {response.status_code}: {response.text}")
+                # 返回HTTP状态码错误（不打印响应内容）
+                self.logger.warning(
+                    f"GLM API request failed with status {response.status_code}",
+                    {"status": response.status_code, "url": url},
+                )
                 return {
                     "api_error": True,
                     "error_code": response.status_code,
                     "error_msg": f"HTTP {response.status_code}",
-                    "http_status": response.status_code,
-                    "raw_response": response.text
                 }
 
         except Exception as e:
@@ -235,9 +234,17 @@ class GLMPlatform(BasePlatform):
         # GLM使用按量付费模式，没有订阅概念
         return None
 
+    def _format_number(self, num: int) -> str:
+        """格式化大数字，支持亿、万"""
+        if num >= 100000000:
+            return f"{num / 100000000:.1f}亿"
+        elif num >= 10000:
+            return f"{num / 10000:.1f}万"
+        else:
+            return f"{num}"
+
     def format_balance_display(self, combined_data: Dict[str, Any]) -> str:
-        """Format GLM balance and subscription for display"""
-        # 处理空数据情况
+        """Format GLM quota usage and subscription for display"""
         if combined_data is None:
             self.logger.info("No combined data available for display")
             return "\033[91mNoData\033[0m"
@@ -261,60 +268,63 @@ class GLMPlatform(BasePlatform):
                 self.logger.warning("GLM API unavailable")
                 return f"\033[91mUnavail\033[0m"
 
-            # 提取余额数据
-            balance_data = combined_data.get("balance_data", {})
+            # 提取配额数据
+            quota_data = combined_data.get("quota_data", {})
             subscription_data = combined_data.get("subscription_data", {})
 
-            # 处理余额部分
-            if "data" not in balance_data:
-                self.logger.warning("GLM balance data missing 'data' field")
-                balance_display = "\033[91mNoData\033[0m"
+            # 从 limits 数组中提取信息
+            # API字段: usage=配额总量, currentValue=已用量, remaining=剩余量
+            total_quota = 0
+            used = 0
+            remaining = 0
+            next_reset_time = 0
+
+            if quota_data and isinstance(quota_data, dict):
+                data = quota_data.get("data", {})
+                limits = data.get("limits", [])
+                if limits and len(limits) > 0:
+                    # 查找 TOKENS_LIMIT
+                    for limit in limits:
+                        if limit.get("type") == "TOKENS_LIMIT":
+                            total_quota = limit.get("usage", 0)
+                            used = limit.get("currentValue", 0)
+                            remaining = limit.get("remaining", 0)
+                            next_reset_time = limit.get("nextResetTime", 0)
+                            break
+
+            # 计算使用率和颜色
+            usage_pct = (used / total_quota * 100) if total_quota > 0 else 0
+            remaining_pct = 100 - usage_pct
+
+            # 颜色基于剩余量（剩余越少越红）
+            if remaining_pct <= 10:
+                usage_color = "\033[91m"  # 红色 - 告警
+            elif remaining_pct <= 30:
+                usage_color = "\033[93m"  # 黄色 - 警告
             else:
-                data = balance_data.get("data", {})
-                balance = data.get("availableBalance", 0)
-                currency = "CNY"  # GLM只支持人民币
+                usage_color = "\033[92m"  # 绿色 - 充足
 
-                # 颜色代码基于余额 - 支持负值显示
-                if currency == "CNY":
-                    if balance < 0:  # 负余额 - 红色
-                        color = "\033[91m"
-                    elif balance <= 1:
-                        color = "\033[91m"  # 红色 - 余额很少
-                    elif balance <= 10:
-                        color = "\033[93m"  # 黄色 - 余额较少
-                    else:
-                        color = "\033[92m"  # 绿色 - 余额充足
-                else:
-                    if balance <= 5:
-                        color = "\033[91m"  # 红色
-                    elif balance <= 25:
-                        color = "\033[93m"  # 黄色
-                    else:
-                        color = "\033[92m"  # 绿色
+            # 格式化刷新时间
+            from datetime import datetime
+            if next_reset_time > 0:
+                try:
+                    reset_time = datetime.fromtimestamp(next_reset_time / 1000)
+                    reset_short = reset_time.strftime("%m-%d %H:%M")
+                except:
+                    reset_short = "Unknown"
+            else:
+                reset_short = "Unknown"
 
-                reset = "\033[0m"
-
-                # 格式化余额显示（保留2位小数，最小值为0.01）
-                # 处理负数，最小显示为-0.01
-                if balance < 0 and abs(balance) < 0.01:
-                    display_balance = -0.01
-                # 处理正数，最小显示为0.01（但如果为0则显示0）
-                elif 0 < balance < 0.01:
-                    display_balance = 0.01
-                else:
-                    display_balance = balance
-
-                if currency == "CNY":
-                    balance_display = f"{color}{display_balance:.2f}CNY{reset}"
-                else:
-                    balance_display = f"{color}${display_balance:.2f}{reset}"
+            # 格式化用量显示
+            used_str = self._format_number(used)
+            remaining_str = self._format_number(remaining)
+            total_str = self._format_number(total_quota)
 
             # 处理订阅部分 - 使用中括号显示到期时间
             subscription_display = ""
-            if subscription_data and isinstance(subscription_data, dict) and "data" in subscription_data:
+            if subscription_data and isinstance(subscription_data, dict):
                 subscriptions = subscription_data.get("data", [])
                 if subscriptions and len(subscriptions) > 0:
-                    # 找到当前有效的订阅
                     current_sub = None
                     for sub in subscriptions:
                         if sub.get("status") == "VALID" and sub.get("inCurrentPeriod"):
@@ -325,33 +335,28 @@ class GLMPlatform(BasePlatform):
                         next_renew = current_sub.get("nextRenewTime", "")
                         if next_renew:
                             try:
-                                from datetime import datetime
-                                # 格式化到期时间 (MM-DD)，用中括号
-                                if len(next_renew) >= 10:
-                                    date_obj = datetime.fromisoformat(next_renew[:10])
-                                    renew_short = date_obj.strftime("%m-%d")
-                                    subscription_display = f" [{renew_short}]"
-                                else:
-                                    subscription_display = f" [{next_renew[:5]}]"
+                                date_obj = datetime.fromisoformat(next_renew[:10])
+                                renew_short = date_obj.strftime("%m-%d")
+                                subscription_display = f" [{renew_short}]"
                             except:
                                 subscription_display = f" [{next_renew[:5]}]"
-                        else:
-                            subscription_display = ""  # 无时间信息，不显示
-                    else:
-                        subscription_display = ""  # 无有效订阅，不显示
-                else:
-                    subscription_display = ""  # 无数据，不显示
-            else:
-                subscription_display = ""  # 无信息，不显示
 
-            # 组合最终显示（去掉平台名称前缀，由formatter统一添加）
-            final_display = f"{balance_display}{subscription_display}"
+            reset = "\033[0m"
+
+            # 组合显示：剩余/总量(刷新时间)[到期时间]
+            # 格式参考 Minimaxi: `4261万/2亿(01-15 12:00) [01-09]`
+            usage_display = f"{remaining_str}/{total_str}({reset_short})"
+
+            final_display = f"{usage_color}{usage_display}{reset}{subscription_display}"
 
             self.logger.debug(
                 "GLM combined formatting completed",
                 {
                     "final_display": final_display,
-                    "balance": balance if 'balance' in locals() else 'N/A',
+                    "used": used_str,
+                    "remaining": remaining_str,
+                    "total": total_str,
+                    "reset_time": reset_short,
                     "has_subscription": bool(subscription_display),
                 },
             )
@@ -368,21 +373,35 @@ class GLMPlatform(BasePlatform):
             return "\033[91mNoData\033[0m"
 
         try:
-            plan = subscription_data.get("plan", "Unknown")
-            model = subscription_data.get("model", "GLM")
+            # 新API返回的是数组格式
+            subscriptions = subscription_data.get("data", [])
+            if not subscriptions or len(subscriptions) == 0:
+                return "\033[91mNoSub\033[0m"
+
+            # 获取第一个有效订阅
+            current_sub = None
+            for sub in subscriptions:
+                if sub.get("status") == "VALID" and sub.get("inCurrentPeriod"):
+                    current_sub = sub
+                    break
+
+            if not current_sub:
+                return "\033[91mNoSub\033[0m"
+
+            product_name = current_sub.get("productName", "Unknown")
 
             self.logger.debug(
                 "GLM subscription data structure",
                 {
-                    "plan": plan,
-                    "model": model,
+                    "product_name": product_name,
+                    "status": current_sub.get("status"),
                 },
             )
 
             reset = "\033[0m"
             color = "\033[94m"  # 蓝色
 
-            subscription_text = f"Sub:{plan}({model})"
+            subscription_text = f"Sub:{product_name}"
             return f"{color}{subscription_text}{reset}"
         except Exception as e:
             self.logger.error(f"GLM subscription formatting failed: {e}")
