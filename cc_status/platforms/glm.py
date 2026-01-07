@@ -235,11 +235,13 @@ class GLMPlatform(BasePlatform):
         return None
 
     def _format_number(self, num: int) -> str:
-        """格式化大数字，支持亿、万"""
-        if num >= 100000000:
-            return f"{num / 100000000:.1f}亿"
-        elif num >= 10000:
-            return f"{num / 10000:.1f}万"
+        """格式化大数字，支持 Billion/Million (B/M/K)"""
+        if num >= 1000000000:
+            return f"{num / 1000000000:.1f}B"
+        elif num >= 1000000:
+            return f"{num / 1000000:.1f}M"
+        elif num >= 1000:
+            return f"{num / 1000:.1f}K"
         else:
             return f"{num}"
 
@@ -344,7 +346,7 @@ class GLMPlatform(BasePlatform):
             reset = "\033[0m"
 
             # 组合显示：剩余/总量(刷新时间)[到期时间]
-            # 格式参考 Minimaxi: `4261万/2亿(01-15 12:00) [01-09]`
+            # 格式参考 Minimaxi: `157.4M/200M(01-15 12:00) [01-09]`
             usage_display = f"{remaining_str}/{total_str}({reset_short})"
 
             final_display = f"{usage_color}{usage_display}{reset}{subscription_display}"
