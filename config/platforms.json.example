@@ -48,6 +48,7 @@
       "platform_type": "kfc",
       "api_base_url": "https://api.kimi.com/coding/",
       "auth_token": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "login_token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...",
       "model": "kimi-for-coding",
       "enabled": true
     },

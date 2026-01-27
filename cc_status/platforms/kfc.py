@@ -64,33 +64,48 @@ class KfcPlatform(BasePlatform):
         return False
 
     def fetch_balance_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch balance data from KFC API using auth_token"""
+        """Fetch balance data from KFC API using login_token (JWT) or auth_token"""
         try:
-            # 只使用auth_token（KFC的API Key）
+            # KFC 余额查询需要 JWT 格式的 login_token
+            # auth_token (sk-kimi-xxx) 是 API Key，不能用于余额查询
+            login_token = self.config.get("login_token")
             auth_token = self.config.get("auth_token")
 
-            # 验证是否有可用的token
-            if not auth_token:
+            # 优先使用 login_token (JWT)
+            token = None
+            token_type = None
+            if login_token:
+                token = login_token
+                token_type = "login_token"
+            elif auth_token and auth_token.startswith("eyJ"):
+                # 如果 auth_token 是 JWT 格式，也可以使用
+                token = auth_token
+                token_type = "auth_token (JWT)"
+
+            # 验证是否有可用的 token
+            if not token:
                 self.logger.debug(
-                    "KFC auth_token not configured, skipping balance query"
+                    "KFC login_token not configured, skipping balance query. "
+                    "Note: auth_token (sk-kimi-xxx) cannot be used for balance query. "
+                    "Please set login_token with JWT from browser cookie."
                 )
                 return None
 
             self.logger.debug(
                 "Starting KFC balance fetch",
                 {
-                    "has_auth_token": bool(auth_token),
-                    "auth_token_length": len(auth_token) if auth_token else 0,
+                    "token_type": token_type,
+                    "has_token": bool(token),
+                    "token_length": len(token) if token else 0,
                 },
             )
 
-            # 使用auth_token调用Kimi标准API
-            self.logger.debug("Attempting balance query with auth_token")
-            balance_data = self._make_kfc_request(auth_token)
+            # 使用 token 调用 KFC API
+            balance_data = self._make_kfc_request(token)
 
             if balance_data:
                 self.logger.info(
-                    "KFC balance data fetched successfully with auth_token",
+                    f"KFC balance data fetched successfully with {token_type}",
                     {
                         "data_keys": list(balance_data.keys()),
                         "data_type": type(balance_data).__name__,
@@ -99,7 +114,7 @@ class KfcPlatform(BasePlatform):
                 )
                 return balance_data
             else:
-                self.logger.warning("KFC auth_token query failed")
+                self.logger.warning(f"KFC {token_type} query failed")
 
             return None
 
@@ -111,31 +126,42 @@ class KfcPlatform(BasePlatform):
         """Make KFC usage query using KFC-specific API with auth_token"""
         import requests
 
-        # KFC专用API端点 - 查询使用量
-        url = "https://www.kimi.com/coding/kimi.billing.v1.BillingService/GetUsage"
+        # KFC专用API端点 - 查询使用量 (2025-01更新)
+        url = "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
 
-        # Request headers
+        # Request headers - 使用Bearer Token认证
         headers = {
             'Content-Type': 'application/json',
-            'User-Agent': (
+            'Authorization': f'Bearer {token}',
+            'accept': '*/*',
+            'accept-language': 'en,zh-CN;q=0.9,zh;q=0.8',
+            'cache-control': 'no-cache',
+            'connect-protocol-version': '1',
+            'origin': 'https://www.kimi.com',
+            'pragma': 'no-cache',
+            'referer': 'https://www.kimi.com/code/console',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'user-agent': (
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                 'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/142.0.0.0 Safari/537.36'
+                'Chrome/144.0.0.0 Safari/537.36'
             ),
+            'x-language': 'zh-CN',
+            'x-msh-platform': 'web',
+            'x-msh-version': '1.0.0',
         }
 
-        # Request data - 使用auth_token作为credential key
+        # Request data - 新版API格式
         data = {
-            "credential": {
-                "key": token,
-                "scope": "FEATURE_CODING"
-            }
+            "scope": ["FEATURE_CODING"]
         }
 
         try:
             self.logger.debug(f"Making KFC API request to: {url}")
             self.logger.debug(
-                f"Using auth_token (first 10 chars): {token[:10]}..."
+                f"Using auth_token (first 20 chars): {token[:20]}..."
             )
             response = requests.post(url, headers=headers, json=data, timeout=10)
 
@@ -148,7 +174,7 @@ class KfcPlatform(BasePlatform):
             else:
                 self.logger.warning(
                     f"KFC API request failed with status "
-                    f"{response.status_code}: {response.text}"
+                    f"{response.status_code}: {response.text[:200]}"
                 )
                 return None
 
@@ -177,17 +203,29 @@ class KfcPlatform(BasePlatform):
         )
 
         try:
-            # KFC API 返回直接的 usage 对象（不是usages数组）
-            usage = balance_data.get("usage", {})
-            if not usage:
-                self.logger.warning("No usage data found in KFC response")
+            # KFC API 返回 usages 数组 (2025-01更新)
+            usages = balance_data.get("usages", [])
+            if not usages:
+                self.logger.warning("No usages data found in KFC response")
                 return "\033[91mNoUsage\033[0m"
 
-            # 解析使用数据
-            limit_str = usage.get("limit", "0")
-            used_str = usage.get("used", "0")
-            remaining_str = usage.get("remaining", "0")
-            reset_time = usage.get("resetTime", "")  # 获取重置时间
+            # 找到 FEATURE_CODING 的使用数据
+            usage = None
+            for u in usages:
+                if u.get("scope") == "FEATURE_CODING":
+                    usage = u
+                    break
+
+            if not usage:
+                self.logger.warning("No FEATURE_CODING usage found in KFC response")
+                return "\033[91mNoCodingUsage\033[0m"
+
+            # 解析使用数据 (在 detail 对象中)
+            detail = usage.get("detail", {})
+            limit_str = detail.get("limit", "0")
+            used_str = detail.get("used", "0")
+            remaining_str = detail.get("remaining", "0")
+            reset_time = detail.get("resetTime", "")  # 获取重置时间
 
             # 转换为整数
             try:
