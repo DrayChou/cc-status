@@ -5,6 +5,7 @@ Logger utility for cc-status
 """
 
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -31,13 +32,20 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-        # 文件handler
+        # 文件handler - 带日志轮转，保留7天
         try:
-            log_dir = Path.home() / ".claude" / "logs"
+            log_dir = Path(__file__).parent.parent.parent.parent / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
 
             log_file = log_dir / "cc-status.log"
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            # TimedRotatingFileHandler: when='D'=天, interval=1=每天, backupCount=7=保留7天
+            file_handler = logging.handlers.TimedRotatingFileHandler(
+                log_file,
+                when='D',
+                interval=1,
+                backupCount=7,
+                encoding='utf-8'
+            )
             file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
