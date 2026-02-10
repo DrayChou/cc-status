@@ -19,6 +19,7 @@ from .glm import GLMPlatform
 from .siliconflow import SiliconFlowPlatform
 from .kfc import KfcPlatform
 from .minimaxi import MinimaxiPlatform
+from .gaccode import GACCodePlatform
 
 
 class PlatformManager:
@@ -67,10 +68,8 @@ class PlatformManager:
                 platform = MinimaxiPlatform(platform_name, platform_config)
                 return platform
             elif platform_type == "gaccode":
-                # GAC Code 使用原有的基础实现
-                from .base import BasePlatform
-
-                platform = BasePlatform(platform_name, platform_config)
+                # GAC Code 使用专用的平台实现
+                platform = GACCodePlatform(platform_name, platform_config)
                 return platform
             elif platform_type == "doubao":
                 # 豆包使用基础实现
