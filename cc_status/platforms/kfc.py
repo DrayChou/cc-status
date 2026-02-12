@@ -188,7 +188,7 @@ class KfcPlatform(BasePlatform):
         return None
 
     def format_balance_display(self, balance_data: Dict[str, Any]) -> str:
-        """Format KFC balance for display"""
+        """Format KFC balance for display with both short-term and weekly limits"""
         # 处理空数据情况
         if balance_data is None:
             self.logger.info("No balance data available for display")
@@ -203,7 +203,7 @@ class KfcPlatform(BasePlatform):
         )
 
         try:
-            # KFC API 返回 usages 数组 (2025-01更新)
+            # KFC API 返回 usages 数组
             usages = balance_data.get("usages", [])
             if not usages:
                 self.logger.warning("No usages data found in KFC response")
@@ -220,78 +220,44 @@ class KfcPlatform(BasePlatform):
                 self.logger.warning("No FEATURE_CODING usage found in KFC response")
                 return "\033[91mNoCodingUsage\033[0m"
 
-            # 解析使用数据 (在 detail 对象中)
-            detail = usage.get("detail", {})
-            limit_str = detail.get("limit", "0")
-            used_str = detail.get("used", "0")
-            remaining_str = detail.get("remaining", "0")
-            reset_time = detail.get("resetTime", "")  # 获取重置时间
+            # 解析周限额数据 (detail)
+            weekly_detail = usage.get("detail", {})
+            weekly_limit = int(weekly_detail.get("limit", "0") or "0")
+            weekly_remaining = int(weekly_detail.get("remaining", "0") or "0")
+            weekly_reset_time = weekly_detail.get("resetTime", "")
 
-            # 转换为整数
-            try:
-                limit = int(limit_str)
-                used = int(used_str)
-                remaining = int(remaining_str)
-            except (ValueError, TypeError):
-                self.logger.warning(
-                    f"Failed to parse usage numbers: "
-                    f"limit={limit_str}, used={used_str}, "
-                    f"remaining={remaining_str}"
-                )
-                return "\033[91mParseError\033[0m"
+            # 解析短期限额数据 (limits 数组中的第一个，通常是5分钟窗口)
+            limits = usage.get("limits", [])
+            short_limit = 0
+            short_remaining = 0
+            short_reset_time = ""
+
+            if limits:
+                # 使用第一个limit（短期5分钟窗口）
+                short_detail = limits[0].get("detail", {})
+                short_limit = int(short_detail.get("limit", "0") or "0")
+                short_remaining = int(short_detail.get("remaining", "0") or "0")
+                short_reset_time = short_detail.get("resetTime", "")
 
             self.logger.debug(
                 "KFC usage data structure",
                 {
-                    "limit": limit,
-                    "used": used,
-                    "remaining": remaining,
+                    "short_limit": short_limit,
+                    "short_remaining": short_remaining,
+                    "weekly_limit": weekly_limit,
+                    "weekly_remaining": weekly_remaining,
                 },
             )
 
-            # 格式化重置时间
-            reset_display = ""
-            if reset_time:
-                try:
-                    from datetime import datetime
-                    # 解析ISO格式时间：2025-11-22T03:21:23.580297585Z
-                    if 'T' in reset_time:
-                        # 提取日期和时间部分
-                        date_part = reset_time.split('T')[0]  # 2025-11-22
-                        time_part = (
-                            reset_time.split('T')[1].split('.')[0]
-                        )  # 03:21:23
+            # 格式化两个重置时间
+            short_reset_display = self._format_reset_time(short_reset_time)
+            weekly_reset_display = self._format_reset_time(weekly_reset_time)
 
-                        # 格式化时间
-                        date_obj = datetime.strptime(date_part, "%Y-%m-%d")
-                        time_obj = datetime.strptime(time_part, "%H:%M:%S")
-
-                        # 检查是否是今天
-                        today = datetime.now()
-                        if date_obj.date() == today.date():
-                            # 今天刷新，只显示时间 (HH:MM)
-                            reset_short = time_obj.strftime('%H:%M')
-                        else:
-                            # 其他日期显示月-日 时:分
-                            reset_short = (
-                                f"{date_obj.strftime('%m-%d')} "
-                                f"{time_obj.strftime('%H:%M')}"
-                            )
-
-                        reset_display = f"({reset_short})"  # 使用圆括号
-                    else:
-                        reset_display = f"({reset_time[:16]})"  # 备用方案
-                except Exception as e:
-                    self.logger.warning(f"Failed to parse reset time: {e}")
-                    reset_display = f"({reset_time[:16]})"
-            else:
-                reset_display = "(NoReset)"
-
-            # 颜色代码基于剩余次数
-            if remaining <= 50:
+            # 颜色代码基于短期剩余次数（更关键的指标）
+            if short_remaining <= 20:
                 color = "\033[91m"  # 红色
                 color_name = "red"
-            elif remaining <= 200:
+            elif short_remaining <= 50:
                 color = "\033[93m"  # 黄色
                 color_name = "yellow"
             else:
@@ -300,17 +266,25 @@ class KfcPlatform(BasePlatform):
 
             reset = "\033[0m"
 
-            # 格式化显示 - 显示重置时间而不是百分比（去掉平台名称前缀，由formatter统一添加）
-            balance_str = f"{color}{remaining}/{limit}{reset}{reset_display}"
+            # 格式化显示: 5h:短期剩余/短期总数(短期刷新时间)|wk:周剩余/周总数(周刷新时间)
+            if short_limit > 0 and weekly_limit > 0:
+                balance_str = f"{color}5h:{short_remaining}/{short_limit}{short_reset_display}{reset}|wk:{weekly_remaining}/{weekly_limit}{weekly_reset_display}"
+            elif weekly_limit > 0:
+                balance_str = f"{color}wk:{weekly_remaining}/{weekly_limit}{weekly_reset_display}{reset}"
+            else:
+                balance_str = f"{color}N/A{reset}"
 
             self.logger.debug(
                 "KFC balance formatting completed",
                 {
                     "final_display": balance_str,
                     "color_used": color_name,
-                    "remaining": remaining,
-                    "limit": limit,
-                    "reset_time": reset_time,
+                    "short_remaining": short_remaining,
+                    "short_limit": short_limit,
+                    "short_reset_time": short_reset_time,
+                    "weekly_remaining": weekly_remaining,
+                    "weekly_limit": weekly_limit,
+                    "weekly_reset_time": weekly_reset_time,
                 },
             )
 
@@ -318,6 +292,38 @@ class KfcPlatform(BasePlatform):
         except Exception as e:
             self.logger.error(f"KFC balance formatting failed: {e}")
             return f"Error({str(e)[:20]})"
+
+    def _format_reset_time(self, reset_time: str) -> str:
+        """Format reset time for display"""
+        if not reset_time:
+            return "(NoReset)"
+
+        try:
+            from datetime import datetime
+            # 解析ISO格式时间：2026-02-12T17:27:08.139540Z
+            if 'T' in reset_time:
+                # 提取日期和时间部分
+                date_part = reset_time.split('T')[0]  # 2026-02-12
+                time_part = reset_time.split('T')[1].split('.')[0]  # 17:27:08
+
+                # 格式化时间
+                date_obj = datetime.strptime(date_part, "%Y-%m-%d")
+                time_obj = datetime.strptime(time_part, "%H:%M:%S")
+
+                # 检查是否是今天
+                today = datetime.now()
+                if date_obj.date() == today.date():
+                    # 今天刷新，只显示时间 (HH:MM)
+                    reset_short = time_obj.strftime('%H:%M')
+                else:
+                    # 其他日期显示月-日 时:分
+                    reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+
+                return f"({reset_short})"
+            else:
+                return f"({reset_time[:16]})"  # 备用方案
+        except Exception:
+            return f"({reset_time[:16]})"
 
     def format_subscription_display(
         self, subscription_data: Dict[str, Any]
