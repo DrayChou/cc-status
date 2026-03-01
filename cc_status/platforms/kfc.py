@@ -294,30 +294,39 @@ class KfcPlatform(BasePlatform):
             return f"Error({str(e)[:20]})"
 
     def _format_reset_time(self, reset_time: str) -> str:
-        """Format reset time for display"""
+        """Format reset time for display with timezone conversion"""
         if not reset_time:
             return "(NoReset)"
 
         try:
-            from datetime import datetime
-            # 解析ISO格式时间：2026-02-12T17:27:08.139540Z
+            from datetime import datetime, timezone
+            # 解析ISO格式时间：2026-02-12T17:27:08.139540Z (UTC)
             if 'T' in reset_time:
-                # 提取日期和时间部分
-                date_part = reset_time.split('T')[0]  # 2026-02-12
-                time_part = reset_time.split('T')[1].split('.')[0]  # 17:27:08
+                # 处理带Z后缀的UTC时间
+                if reset_time.endswith('Z'):
+                    reset_time = reset_time[:-1] + '+00:00'
 
-                # 格式化时间
-                date_obj = datetime.strptime(date_part, "%Y-%m-%d")
-                time_obj = datetime.strptime(time_part, "%H:%M:%S")
+                # 解析为带时区的datetime对象
+                try:
+                    utc_dt = datetime.fromisoformat(reset_time.replace('Z', '+00:00'))
+                except ValueError:
+                    # 兼容旧格式：手动解析
+                    date_part = reset_time.split('T')[0]
+                    time_part = reset_time.split('T')[1].split('.')[0]
+                    utc_dt = datetime.strptime(f"{date_part}T{time_part}", "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
 
-                # 检查是否是今天
-                today = datetime.now()
-                if date_obj.date() == today.date():
+                # 转换为本地时区
+                local_dt = utc_dt.astimezone()
+
+                # 获取当前本地时间
+                today = datetime.now().astimezone()
+
+                if local_dt.date() == today.date():
                     # 今天刷新，只显示时间 (HH:MM)
-                    reset_short = time_obj.strftime('%H:%M')
+                    reset_short = local_dt.strftime('%H:%M')
                 else:
-                    # 其他日期显示月-日 时:分
-                    reset_short = f"{date_obj.strftime('%m-%d')} {time_obj.strftime('%H:%M')}"
+                    # 其他日期显示 月-日 时:分
+                    reset_short = f"{local_dt.strftime('%m-%d')} {local_dt.strftime('%H:%M')}"
 
                 return f"({reset_short})"
             else:
