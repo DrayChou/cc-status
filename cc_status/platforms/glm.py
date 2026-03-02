@@ -280,6 +280,9 @@ class GLMPlatform(BasePlatform):
             used = 0
             remaining = 0
             next_reset_time = 0
+            percentage = None  # API 直接返回的百分比（降级方案）
+            unit = None
+            number = None
 
             if quota_data and isinstance(quota_data, dict):
                 data = quota_data.get("data", {})
@@ -292,11 +295,19 @@ class GLMPlatform(BasePlatform):
                             used = limit.get("currentValue", 0)
                             remaining = limit.get("remaining", 0)
                             next_reset_time = limit.get("nextResetTime", 0)
+                            percentage = limit.get("percentage")  # 保存百分比（降级方案）
+                            unit = limit.get("unit")
+                            number = limit.get("number")
                             break
 
             # 计算使用率和颜色
             usage_pct = (used / total_quota * 100) if total_quota > 0 else 0
             remaining_pct = 100 - usage_pct
+
+            # 如果没有详细数据但有百分比，使用百分比作为降级方案
+            if total_quota == 0 and percentage is not None:
+                usage_pct = percentage
+                remaining_pct = 100 - percentage
 
             # 颜色基于剩余量（剩余越少越红）
             if remaining_pct <= 10:
@@ -347,7 +358,28 @@ class GLMPlatform(BasePlatform):
 
             # 组合显示：剩余/总量(刷新时间)[到期时间]
             # 格式参考 Minimaxi: `157.4M/200M(01-15 12:00) [01-09]`
-            usage_display = f"{remaining_str}/{total_str}({reset_short})"
+            # 降级方案：如果没有详细数据，显示百分比
+            if total_quota == 0 and percentage is not None:
+                # 降级显示：使用百分比 + 周期信息
+                period_info = ""
+                if unit is not None and number is not None:
+                    # unit: 3=小时, 5=分钟
+                    unit_name = "h" if unit == 3 else "m" if unit == 5 else "?"
+                    period_info = f"{number}{unit_name}"
+
+                usage_display = f"{percentage}%"
+                if period_info:
+                    usage_display += f"/{period_info}"
+                if reset_short != "Unknown":
+                    usage_display += f"({reset_short})"
+
+                self.logger.info(
+                    f"GLM using fallback display (percentage mode): {percentage}%, "
+                    f"period={period_info}, reset={reset_short}"
+                )
+            else:
+                # 正常显示：剩余/总量(刷新时间)
+                usage_display = f"{remaining_str}/{total_str}({reset_short})"
 
             final_display = f"{usage_color}{usage_display}{reset}{subscription_display}"
 
