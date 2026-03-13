@@ -28,8 +28,8 @@ class StatusRenderer:
             if not formatted_status:
                 return
 
-            layout = config.get("layout", "single_line")
-            auto_wrap = config.get("auto_wrap", False)
+            layout = config.get("layout", "multi_line")
+            auto_wrap = config.get("auto_wrap", True)
 
             if layout == "multi_line":
                 # 多行显示 - 按分隔符分割

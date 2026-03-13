@@ -284,7 +284,7 @@ Model:Unknown Time:16:33:02 | DeepSeek:-0.32CNY | Kimi:5.19CNY | SiliconFlow:24.
     "show_time": true,
     "show_session_cost": true,
     "show_today_usage": true,
-    "layout": "single_line"
+    "layout": "multi_line"
   },
   "multiplier_config": {
     "enabled": true,
@@ -317,7 +317,8 @@ Model:Unknown Time:16:33:02 | DeepSeek:-0.32CNY | Kimi:5.19CNY | SiliconFlow:24.
 | `show_time` | 显示当前时间 | `true` |
 | `show_session_cost` | 显示会话成本 | `true` |
 | `show_today_usage` | 显示今日使用量 | `true` |
-| `layout` | 布局方式 | `"single_line"` |
+| `layout` | 布局方式 | `"multi_line"` |
+| `auto_wrap` | 自动换行 | `true` |
 
 ### Token 自动过滤
 

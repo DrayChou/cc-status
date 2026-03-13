@@ -158,8 +158,8 @@ class ConfigManager:
             "show_today_usage": True,
             "show_ccusage": True,  # 新增：显示 ccusage 统计
             "show_directory": True,
-            "layout": "single_line",
-            "auto_wrap": False,  # 新增：自动换行保护，默认关闭
+            "layout": "multi_line",
+            "auto_wrap": True,  # 默认开启自动换行，防止内容被截断
             "multiplier_config": {
                 "enabled": True,
                 "periods": [
