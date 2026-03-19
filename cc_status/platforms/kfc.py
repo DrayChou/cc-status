@@ -112,6 +112,8 @@ class KfcPlatform(BasePlatform):
                         "has_balance_data": "data" in balance_data,
                     },
                 )
+                # 添加原始数据字段
+                balance_data["raw_data"] = balance_data.copy()
                 return balance_data
             else:
                 self.logger.warning(f"KFC {token_type} query failed")

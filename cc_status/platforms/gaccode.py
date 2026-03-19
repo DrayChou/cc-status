@@ -88,6 +88,7 @@ class GACCodePlatform(BasePlatform):
                         "creditCap": balance_data.get("creditCap"),
                     },
                 )
+                balance_data["raw_data"] = balance_data.copy()
                 return balance_data
             elif response.status_code == 401:
                 self.logger.warning(

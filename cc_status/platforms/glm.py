@@ -97,7 +97,11 @@ class GLMPlatform(BasePlatform):
                 # 合并配额和订阅数据
                 combined_data = {
                     "quota_data": quota_data,
-                    "subscription_data": subscription_data
+                    "subscription_data": subscription_data,
+                    "raw_data": {
+                        "quota": quota_data,
+                        "subscription": subscription_data,
+                    },
                 }
 
                 return combined_data

@@ -102,6 +102,7 @@ class KimiPlatform(BasePlatform):
                         "has_balance_data": "data" in balance_data,
                     },
                 )
+                balance_data["raw_data"] = balance_data.copy()
                 return balance_data
             else:
                 self.logger.warning("Kimi auth_token query failed")

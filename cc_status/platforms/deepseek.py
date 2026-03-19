@@ -89,6 +89,7 @@ class DeepSeekPlatform(BasePlatform):
                         "is_available": balance_data.get("is_available"),
                     },
                 )
+                balance_data["raw_data"] = balance_data.copy()
                 return balance_data
             else:
                 self.logger.warning(

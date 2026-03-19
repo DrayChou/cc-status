@@ -181,6 +181,8 @@ class MinimaxiPlatform(BasePlatform):
                         "has_current_subscribe": "current_subscribe" in subscription_data,
                     },
                 )
+                # 添加原始数据字段
+                subscription_data["raw_data"] = subscription_data.copy()
                 return subscription_data
             else:
                 self.logger.warning("Minimaxi auth_token query failed")
