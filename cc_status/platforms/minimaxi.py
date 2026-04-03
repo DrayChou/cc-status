@@ -339,24 +339,15 @@ class MinimaxiPlatform(BasePlatform):
             return None
 
     def format_usage_display(self, usage_data: Dict[str, Any]) -> str:
-        """Format Minimaxi usage and subscription for display (combined)"""
-        # 处理空数据情况
+        """Format Minimaxi usage for display with interval and weekly data (KFC style)"""
         if usage_data is None:
             self.logger.info("No usage data available for display")
             return "\033[91mNoData\033[0m"
 
-        self.logger.debug(
-            "Starting Minimaxi combined usage formatting",
-            {
-                "usage_data_keys": list(usage_data.keys()),
-                "usage_data_type": type(usage_data).__name__,
-            },
-        )
-
         try:
             # 检查API响应状态
             base_resp = usage_data.get("base_resp", {})
-            if base_resp.get("status_code") != 0:
+            if base_resp and base_resp.get("status_code") != 0:
                 error_msg = base_resp.get("status_msg", "Unknown error")
                 self.logger.warning(f"Minimaxi usage API returned error: {error_msg}")
                 return f"\033[91m{error_msg}\033[0m"
@@ -367,102 +358,89 @@ class MinimaxiPlatform(BasePlatform):
                 self.logger.warning("Minimaxi usage data missing 'model_remains' field")
                 return "\033[91mNoUsage\033[0m"
 
-            # 取第一个模型的数据（通常只有一个）
-            primary_model = model_remains[0]
+            # 找到 MiniMax-M* 模型（主要编程模型）
+            coding_model = None
+            for model in model_remains:
+                model_name = model.get("model_name", "")
+                if "MiniMax-M" in model_name or "minimax-m" in model_name.lower():
+                    coding_model = model
+                    break
 
-            # 提取关键数据
-            model_name = primary_model.get("model_name", "Unknown")
-            total_count = primary_model.get("current_interval_total_count", 0)
-            used_count = primary_model.get("current_interval_usage_count", 0)
-            remains_time = primary_model.get("remains_time", 0)
-            end_time = primary_model.get("end_time", 0)
+            # 如果没找到 M 系列，取第一个
+            if not coding_model:
+                coding_model = model_remains[0]
 
-            # 计算剩余额度
-            remaining_count = used_count
-            usage_percentage = (used_count / total_count * 100) if total_count > 0 else 0
+            # 提取 interval 数据（当前周期）
+            interval_total = coding_model.get("current_interval_total_count", 0)
+            interval_used = coding_model.get("current_interval_usage_count", 0)
+            interval_remaining = interval_used  # API命名就是usage是剩余
+            interval_end_time = coding_model.get("end_time", 0)
+            interval_start_time = coding_model.get("start_time", 0)
 
-            # 计算重置时间（从end_time时间戳转换为可读格式）
-            try:
-                from datetime import datetime
-                if end_time > 0:
-                    # 时间戳是毫秒，需要转换为秒
-                    reset_time = datetime.fromtimestamp(end_time / 1000)
-                    reset_short = reset_time.strftime("%m-%d %H:%M")
+            # 提取 weekly 数据
+            weekly_total = coding_model.get("current_weekly_total_count", 0)
+            weekly_used = coding_model.get("current_weekly_usage_count", 0)
+            weekly_end_time = coding_model.get("weekly_end_time", 0)
 
-                    # 计算剩余小时数
-                    now = datetime.now()
-                    hours_left = (reset_time - now).total_seconds() / 3600
+            # 格式化时间
+            from datetime import datetime
+            interval_reset = self._format_timestamp(interval_end_time)
+            weekly_reset = self._format_timestamp(weekly_end_time)
 
-                    if hours_left <= 1:
-                        time_color = "\033[91m"  # 红色
-                    elif hours_left <= 6:
-                        time_color = "\033[93m"  # 黄色
-                    else:
-                        time_color = "\033[92m"  # 绿色
-                else:
-                    reset_short = "Unknown"
-                    time_color = "\033[91m"
-            except Exception as e:
-                self.logger.error(f"Failed to parse Minimaxi reset time: {e}")
-                reset_short = "Error"
-                time_color = "\033[91m"
-
-            # 根据剩余量选择颜色：剩余越多越好（绿色），剩余越少越差（红色）
-            remaining_percentage = (remaining_count / total_count * 100) if total_count > 0 else 0
-            if remaining_percentage <= 10:
-                usage_color = "\033[91m"  # 红色 - 剩余很少
-            elif remaining_percentage <= 30:
-                usage_color = "\033[93m"  # 黄色 - 剩余较少
+            # 颜色基于 interval 剩余比例
+            interval_pct = (interval_remaining / interval_total * 100) if interval_total > 0 else 0
+            if interval_pct <= 10:
+                usage_color = "\033[91m"  # 红色
+            elif interval_pct <= 30:
+                usage_color = "\033[93m"  # 黄色
             else:
-                usage_color = "\033[92m"  # 绿色 - 剩余充足
+                usage_color = "\033[92m"  # 绿色
 
-            reset_color = "\033[0m"
+            reset = "\033[0m"
 
-            # 尝试获取订阅数据来合并显示
-            subscription_display = ""
-            try:
-                # 获取订阅数据
-                subscription_data = self.fetch_balance_data()
-                if subscription_data:
-                    current_subscribe = subscription_data.get("current_subscribe", {})
-                    if current_subscribe:
-                        end_time_str = current_subscribe.get("current_subscribe_end_time", "")
-                        if end_time_str:
-                            try:
-                                # Parse date (format: "12/15/2025")
-                                date_obj = datetime.strptime(end_time_str, "%m/%d/%Y")
-                                expiry_short = date_obj.strftime("%m-%d")
-                                subscription_display = f"[{expiry_short}] "
-                            except Exception as e:
-                                self.logger.debug(f"Failed to parse subscription date: {e}")
-            except Exception as e:
-                self.logger.debug(f"Failed to get subscription data for combined display: {e}")
-
-            # 按照正确顺序格式化显示：1余额 → 2使用占比和总量 → 3刷新时间 → 4到期时间
-            # 1. 余额/使用量：remaining_count/total_count
-            # 2. 使用占比（已在remaining_count/total_count中体现）
-            # 3. 刷新时间：(reset_short)
-            # 4. 到期时间：[subscription_display]
-
-            if subscription_display:
-                usage_str = f"{usage_color}{remaining_count}/{total_count}{reset_color}({time_color}{reset_short}{reset_color}){subscription_display}"
+            # KFC 风格: interval:remaining/total(reset)|wk:weekly_remaining/weekly_total(weekly_reset)
+            # Show weekly data if weekly_total > 0 (has limit) OR weekly_used > 0 (has usage)
+            # When weekly_total is 0, it means unlimited (VIP) - show as ∞
+            if weekly_total > 0:
+                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}|wk:{weekly_used}/{weekly_total}{weekly_reset}"
+            elif weekly_used > 0:
+                # Has usage but no limit (VIP unlimited) - show usage with ∞
+                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}|wk:{weekly_used}/∞{weekly_reset}{reset}"
             else:
-                usage_str = f"{usage_color}{remaining_count}/{total_count}{reset_color}({time_color}{reset_short}{reset_color})"
+                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}"
 
             self.logger.debug(
-                "Minimaxi combined usage formatting completed",
+                "Minimaxi usage formatting completed",
                 {
                     "final_display": usage_str,
-                    "model_name": model_name,
-                    "usage": f"{remaining_count}/{total_count}",
-                    "usage_percentage": f"{usage_percentage:.1f}%",
-                    "reset_time": reset_short,
-                    "has_subscription": bool(subscription_display),
+                    "interval": f"{interval_remaining}/{interval_total}",
+                    "weekly": f"{weekly_used}/{weekly_total}" if weekly_total > 0 else "N/A",
+                    "interval_reset": interval_reset,
+                    "weekly_reset": weekly_reset,
                 },
             )
 
             return usage_str
 
         except Exception as e:
-            self.logger.error(f"Minimaxi combined usage formatting failed: {e}")
+            self.logger.error(f"Minimaxi usage formatting failed: {e}")
             return f"Error({str(e)[:20]})"
+
+    def _format_timestamp(self, timestamp: int) -> str:
+        """Format millisecond timestamp to display string"""
+        if not timestamp or timestamp <= 0:
+            return "(NoReset)"
+
+        try:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(timestamp / 1000)
+            now = datetime.now()
+
+            if dt.date() == now.date():
+                reset_short = dt.strftime("%H:%M")
+            else:
+                reset_short = dt.strftime("%m-%d %H:%M")
+
+            return f"({reset_short})"
+        except Exception:
+            return "(Err)"
