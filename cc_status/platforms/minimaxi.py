@@ -358,28 +358,21 @@ class MinimaxiPlatform(BasePlatform):
                 self.logger.warning("Minimaxi usage data missing 'model_remains' field")
                 return "\033[91mNoUsage\033[0m"
 
-            # 找到 MiniMax-M* 模型（主要编程模型）
+            # 找到 'general' 模型（coding plan 主额度），回退到首个模型
             coding_model = None
             for model in model_remains:
-                model_name = model.get("model_name", "")
-                if "MiniMax-M" in model_name or "minimax-m" in model_name.lower():
+                if model.get("model_name") == "general":
                     coding_model = model
                     break
 
-            # 如果没找到 M 系列，取第一个
+            # 如果没找到 general，取第一个
             if not coding_model:
                 coding_model = model_remains[0]
 
-            # 提取 interval 数据（当前周期）
-            interval_total = coding_model.get("current_interval_total_count", 0)
-            interval_used = coding_model.get("current_interval_usage_count", 0)
-            interval_remaining = interval_used  # API命名就是usage是剩余
+            # 新接口仅返回剩余百分比；total/used 计数恒为 0
+            interval_pct = coding_model.get("current_interval_remaining_percent", 0)
+            weekly_pct = coding_model.get("current_weekly_remaining_percent", 0)
             interval_end_time = coding_model.get("end_time", 0)
-            interval_start_time = coding_model.get("start_time", 0)
-
-            # 提取 weekly 数据
-            weekly_total = coding_model.get("current_weekly_total_count", 0)
-            weekly_used = coding_model.get("current_weekly_usage_count", 0)
             weekly_end_time = coding_model.get("weekly_end_time", 0)
 
             # 格式化时间
@@ -387,8 +380,7 @@ class MinimaxiPlatform(BasePlatform):
             interval_reset = self._format_timestamp(interval_end_time)
             weekly_reset = self._format_timestamp(weekly_end_time)
 
-            # 颜色基于 interval 剩余比例
-            interval_pct = (interval_remaining / interval_total * 100) if interval_total > 0 else 0
+            # 颜色基于 interval 剩余百分比
             if interval_pct <= 10:
                 usage_color = "\033[91m"  # 红色
             elif interval_pct <= 30:
@@ -398,23 +390,18 @@ class MinimaxiPlatform(BasePlatform):
 
             reset = "\033[0m"
 
-            # KFC 风格: interval:remaining/total(reset)|wk:weekly_remaining/weekly_total(weekly_reset)
-            # Show weekly data if weekly_total > 0 (has limit) OR weekly_used > 0 (has usage)
-            # When weekly_total is 0, it means unlimited (VIP) - show as ∞
-            if weekly_total > 0:
-                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}|wk:{weekly_used}/{weekly_total}{weekly_reset}"
-            elif weekly_used > 0:
-                # Has usage but no limit (VIP unlimited) - show usage with ∞
-                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}|wk:{weekly_used}/∞{weekly_reset}{reset}"
-            else:
-                usage_str = f"{usage_color}interval:{interval_remaining}/{interval_total}{interval_reset}{reset}"
+            # KFC 风格: 5h:pct%(reset)|wk:pct%(weekly_reset) — minimaxi interval 是 5h 窗口,与 KFC 一致
+            usage_str = (
+                f"{usage_color}5h:{interval_pct}%{interval_reset}{reset}"
+                f"|wk:{weekly_pct}%{weekly_reset}"
+            )
 
             self.logger.debug(
                 "Minimaxi usage formatting completed",
                 {
                     "final_display": usage_str,
-                    "interval": f"{interval_remaining}/{interval_total}",
-                    "weekly": f"{weekly_used}/{weekly_total}" if weekly_total > 0 else "N/A",
+                    "interval_pct": interval_pct,
+                    "weekly_pct": weekly_pct,
                     "interval_reset": interval_reset,
                     "weekly_reset": weekly_reset,
                 },
